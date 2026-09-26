@@ -1,0 +1,3186 @@
+diff --git a/config/default.yml b/config/default.yml
+index 7f09c00..da81b6f 100644
+--- a/config/default.yml
++++ b/config/default.yml
+@@ -55,6 +55,12 @@ feat_inference:
+   to_remove: True
+ 
+ training:
++  save_final_model: false
++  mia_dump: false
++  mia_rich_dump: false
++  mia_split_mode: random
++  mia_split_frac: 0.5
++  mia_split_seed: 0
+   encoder:
+     x_is_tuple: False
+     graph_attention:
+diff --git a/config/flash.yml b/config/flash.yml
+index 7f21e16..0a755a5 100644
+--- a/config/flash.yml
++++ b/config/flash.yml
+@@ -37,6 +37,15 @@ batching:
+   inter_graph_batching:
+     used_method: none
+ training:
++  # MIA/checkpoint knobs. These live in config/default.yml, but only the orthrus family includes
++  # it (`_include_yml: default`), so every other detector yml must declare them or they resolve to
++  # None and `mia_split_mode` raises at runtime.
++  save_final_model: false
++  mia_dump: false
++  mia_rich_dump: false
++  mia_split_mode: random
++  mia_split_frac: 0.5
++  mia_split_seed: 0
+   used_method: default
+   seed: 0
+   deterministic: False
+diff --git a/config/kairos.yml b/config/kairos.yml
+index a284858..9368bd0 100644
+--- a/config/kairos.yml
++++ b/config/kairos.yml
+@@ -41,6 +41,15 @@ batching:
+   inter_graph_batching:
+     used_method: none
+ training:
++  # MIA/checkpoint knobs. These live in config/default.yml, but only the orthrus family includes
++  # it (`_include_yml: default`), so every other detector yml must declare them or they resolve to
++  # None and `mia_split_mode` raises at runtime.
++  save_final_model: false
++  mia_dump: false
++  mia_rich_dump: false
++  mia_split_mode: random
++  mia_split_frac: 0.5
++  mia_split_seed: 0
+   used_method: default
+   seed: 0
+   deterministic: False
+diff --git a/config/magic.yml b/config/magic.yml
+index 0080567..2f92460 100644
+--- a/config/magic.yml
++++ b/config/magic.yml
+@@ -30,6 +30,15 @@ batching:
+   inter_graph_batching:
+     used_method: none
+ training:
++  # MIA/checkpoint knobs. These live in config/default.yml, but only the orthrus family includes
++  # it (`_include_yml: default`), so every other detector yml must declare them or they resolve to
++  # None and `mia_split_mode` raises at runtime.
++  save_final_model: false
++  mia_dump: false
++  mia_rich_dump: false
++  mia_split_mode: random
++  mia_split_frac: 0.5
++  mia_split_seed: 0
+   used_method: default
+   seed: 0
+   deterministic: False
+diff --git a/config/nodlink.yml b/config/nodlink.yml
+index 6cc6728..46aaaef 100644
+--- a/config/nodlink.yml
++++ b/config/nodlink.yml
+@@ -42,6 +42,12 @@ batching:
+     used_method: none
+ training:
+   used_method: default
++  save_final_model: false
++  mia_dump: false
++  mia_rich_dump: false
++  mia_split_mode: random
++  mia_split_frac: 0.5
++  mia_split_seed: 0
+   seed: 0
+   deterministic: False
+   num_epochs: 12
+diff --git a/config/rcaid.yml b/config/rcaid.yml
+index 358240b..24dd56f 100644
+--- a/config/rcaid.yml
++++ b/config/rcaid.yml
+@@ -39,6 +39,15 @@ batching:
+   inter_graph_batching:
+     used_method: none
+ training:
++  # MIA/checkpoint knobs. These live in config/default.yml, but only the orthrus family includes
++  # it (`_include_yml: default`), so every other detector yml must declare them or they resolve to
++  # None and `mia_split_mode` raises at runtime.
++  save_final_model: false
++  mia_dump: false
++  mia_rich_dump: false
++  mia_split_mode: random
++  mia_split_frac: 0.5
++  mia_split_seed: 0
+   used_method: default
+   seed: 0
+   deterministic: False
+diff --git a/config/threatrace.yml b/config/threatrace.yml
+index d19ea7c..1eba3d9 100644
+--- a/config/threatrace.yml
++++ b/config/threatrace.yml
+@@ -30,6 +30,15 @@ batching:
+   inter_graph_batching:
+     used_method: none
+ training:
++  # MIA/checkpoint knobs. These live in config/default.yml, but only the orthrus family includes
++  # it (`_include_yml: default`), so every other detector yml must declare them or they resolve to
++  # None and `mia_split_mode` raises at runtime.
++  save_final_model: false
++  mia_dump: false
++  mia_rich_dump: false
++  mia_split_mode: random
++  mia_split_frac: 0.5
++  mia_split_seed: 0
+   used_method: default
+   seed: 0
+   deterministic: False
+diff --git a/pidsmaker/config/config.py b/pidsmaker/config/config.py
+index a360361..ab17c1f 100644
+--- a/pidsmaker/config/config.py
++++ b/pidsmaker/config/config.py
+@@ -123,6 +123,447 @@ DATASET_DEFAULT_CONFIG = {
+             ["E3-CADETS/node_Nginx_Backdoor_13.csv", "2018-04-13 09:03:00", "2018-04-13 09:16:00"],
+         ],
+     },
++    # Shadow/target variants of CADETS_E3 for membership-inference work. The two roles train on
++    # DISJOINT day sets (target 04-02/03/04, shadow 04-07/08/09) so a shadow model is a legitimate
++    # stand-in for the target: same distribution, no shared training records. Each role keeps its own
++    # val day and its own attack days, so both produce a self-contained detection table. Everything
++    # else (database, node/edge type counts, date range) is identical to CADETS_E3 on purpose --
++    # only the split differs, so preprocessing artifacts stay comparable.
++    "CADETS_E3_TARGET": {
++        "raw_dir": "",
++        "database": "cadets_e3",
++        "database_all_file": "cadets_e3",
++        "num_node_types": 3,
++        "num_edge_types": 10,
++        "start_date": "2018-04-02",
++        "end_date": "2018-04-14",
++        "train_dates": [
++            "2018-04-02",
++            "2018-04-03",
++            "2018-04-04",
++        ],
++        "val_dates": ["2018-04-05"],
++        "test_dates": ["2018-04-06", "2018-04-12"],
++        "unused_dates": [],
++        "ground_truth_relative_path": [
++            "E3-CADETS/node_Nginx_Backdoor_06.csv",
++            "E3-CADETS/node_Nginx_Backdoor_12.csv",
++        ],
++        "attack_to_time_window": [
++            ["E3-CADETS/node_Nginx_Backdoor_06.csv", "2018-04-06 11:20:00", "2018-04-06 12:09:00"],
++            ["E3-CADETS/node_Nginx_Backdoor_12.csv", "2018-04-12 13:59:00", "2018-04-12 14:39:00"],
++        ],
++    },
++    "CADETS_E3_SHADOW": {
++        "raw_dir": "",
++        "database": "cadets_e3",
++        "database_all_file": "cadets_e3",
++        "num_node_types": 3,
++        "num_edge_types": 10,
++        "start_date": "2018-04-02",
++        "end_date": "2018-04-14",
++        "train_dates": [
++            "2018-04-07",
++            "2018-04-08",
++            "2018-04-09",
++        ],
++        "val_dates": ["2018-04-10"],
++        "test_dates": ["2018-04-13"],
++        "unused_dates": [],
++        "ground_truth_relative_path": [
++            "E3-CADETS/node_Nginx_Backdoor_13.csv",
++        ],
++        "attack_to_time_window": [
++            ["E3-CADETS/node_Nginx_Backdoor_13.csv", "2018-04-13 09:03:00", "2018-04-13 09:16:00"],
++        ],
++    },
++    # Cross-role membership split: the detector trains on ALL of the target's days (no
++    # `mia_split_frac` subsampling), and the non-members are ALL of the shadow's days.
++    #
++    # Why this exists. In `random` mode `mia_split_frac` is what *creates* the non-member pool --
++    # the withheld 1-frac of batches. That costs training data: a frac=0.5 target sees ~1.5 of
++    # its 3 days, so its detection numbers are those of a data-starved model. Here instead the
++    # negatives come from days the model never trained on, so the detector gets 100% of its
++    # training days and is full strength.
++    #
++    # The cost is that membership now correlates with the calendar, and a structure-only floor
++    # has to absorb day-to-day drift before any AUC counts as memorisation. That is the trade:
++    # `random` buys a confound-free split with a weaker model; this buys a strong model with a
++    # confound the floor must rule out. Use `mia_split_mode: xrole`, which takes the val split
++    # as the non-member pool.
++    #
++    # The non-member days sit in `val_dates` (not `test_dates`) so that `test_dates` keeps only
++    # the two attack days and the detection table stays directly comparable to CADETS_E3_TARGET.
++    # Validation here is 3 benign days rather than 1, which is strictly better threshold
++    # calibration; the threshold is a scalar fit on benign losses and takes no part in the MIA,
++    # which reads the raw per-node dumps.
++    "CADETS_E3_NOFRAC": {
++        "raw_dir": "",
++        "database": "cadets_e3",
++        "database_all_file": "cadets_e3",
++        "num_node_types": 3,
++        "num_edge_types": 10,
++        "start_date": "2018-04-02",
++        "end_date": "2018-04-14",
++        # members: identical to CADETS_E3_TARGET, trained on in full
++        "train_dates": [
++            "2018-04-02",
++            "2018-04-03",
++            "2018-04-04",
++        ],
++        # non-members: the shadow role's training days, benign and never trained on
++        "val_dates": [
++            "2018-04-07",
++            "2018-04-08",
++            "2018-04-09",
++        ],
++        "test_dates": ["2018-04-06", "2018-04-12"],
++        "unused_dates": [],
++        "ground_truth_relative_path": [
++            "E3-CADETS/node_Nginx_Backdoor_06.csv",
++            "E3-CADETS/node_Nginx_Backdoor_12.csv",
++        ],
++        "attack_to_time_window": [
++            ["E3-CADETS/node_Nginx_Backdoor_06.csv", "2018-04-06 11:20:00", "2018-04-06 12:09:00"],
++            ["E3-CADETS/node_Nginx_Backdoor_12.csv", "2018-04-12 13:59:00", "2018-04-12 14:39:00"],
++        ],
++    },
++    # The mirror image of CADETS_E3_NOFRAC: train and val days swapped, everything else identical.
++    #
++    # Why a second model is needed. The published node-level MIAs this pilot is benchmarked against
++    # -- He et al. 2021 and Conti et al. 2022 (AISec) -- are both SHADOW-model attacks: the adversary
++    # trains their own model on data whose membership they know, fits an attack classifier on its
++    # outputs, and transfers that classifier to the target. Scoring the target with its own
++    # membership labels (cross-validation) measures separability, not an attack, and overstates what
++    # an adversary can do. Without this dataset there is no second model to be the shadow, because
++    # the cross-role design already spent the shadow role's days as the target's non-member pool.
++    #
++    # Roles are symmetric by construction, so the attack can be run in both directions and any large
++    # asymmetry between them is itself a finding rather than something to average away.
++    "CADETS_E3_NOFRAC_SHADOW": {
++        "raw_dir": "",
++        "database": "cadets_e3",
++        "database_all_file": "cadets_e3",
++        "num_node_types": 3,
++        "num_edge_types": 10,
++        "start_date": "2018-04-02",
++        "end_date": "2018-04-14",
++        # members of the SHADOW model: the days that are non-members for the target
++        "train_dates": [
++            "2018-04-07",
++            "2018-04-08",
++            "2018-04-09",
++        ],
++        # non-members of the SHADOW model: the target's training days
++        "val_dates": [
++            "2018-04-02",
++            "2018-04-03",
++            "2018-04-04",
++        ],
++        "test_dates": ["2018-04-06", "2018-04-12"],
++        "unused_dates": [],
++        "ground_truth_relative_path": [
++            "E3-CADETS/node_Nginx_Backdoor_06.csv",
++            "E3-CADETS/node_Nginx_Backdoor_12.csv",
++        ],
++        "attack_to_time_window": [
++            ["E3-CADETS/node_Nginx_Backdoor_06.csv", "2018-04-06 11:20:00", "2018-04-06 12:09:00"],
++            ["E3-CADETS/node_Nginx_Backdoor_12.csv", "2018-04-12 13:59:00", "2018-04-12 14:39:00"],
++        ],
++    },
++    # CADETS_E3_NOFRAC_SHADOW re-pointed at the shadow role's own attack day, for RE-EVALUATION ONLY.
++    #
++    # Identical to CADETS_E3_NOFRAC_SHADOW in every field that enters an artifact hash -- same
++    # `train_dates`, same construction/featurization/training args -- so the already-trained
++    # checkpoints are reused verbatim and nothing is retrained. Only `test_dates` moves, and
++    # `test_dates` enters no hash (pidsmaker/config/pipeline.py:208-231).
++    #
++    # WHY IT IS A SEPARATE ENTRY rather than an edit in place. The 04-06/12 evaluation of that same
++    # model is a finished result. Because `test_dates` is not hashed, editing the original would
++    # silently rebuild over its artifacts in the same directories, leaving no way to regenerate the
++    # old numbers. A distinct name keeps both evaluations of one model addressable at once.
++    #
++    # What this answers: how the shadow model detects on the day the committed CADETS_E3_SHADOW
++    # calls its test day. The MIA is untouched -- `mia_split_mode: xrole` reads members from
++    # `train_dates` and non-members from `val_dates`, neither of which moves here.
++    "CADETS_E3_NOFRAC_SHADOW_T13": {
++        "raw_dir": "",
++        "database": "cadets_e3",
++        "database_all_file": "cadets_e3",
++        "num_node_types": 3,
++        "num_edge_types": 10,
++        "start_date": "2018-04-02",
++        "end_date": "2018-04-14",
++        "train_dates": [
++            "2018-04-07",
++            "2018-04-08",
++            "2018-04-09",
++        ],
++        "val_dates": [
++            "2018-04-02",
++            "2018-04-03",
++            "2018-04-04",
++        ],
++        "test_dates": ["2018-04-13"],
++        "unused_dates": [],
++        "ground_truth_relative_path": [
++            "E3-CADETS/node_Nginx_Backdoor_13.csv",
++        ],
++        "attack_to_time_window": [
++            ["E3-CADETS/node_Nginx_Backdoor_13.csv", "2018-04-13 09:03:00", "2018-04-13 09:16:00"],
++        ],
++    },
++    # The NEUTRAL reference model for difficulty calibration. Trains on three days that are neither
++    # the target's members nor its non-members, and validates on all six days the MIA is scored over.
++    #
++    # Why it is needed. CADETS_E3_NOFRAC_SHADOW cannot serve as a calibration reference, because its
++    # training days ARE the target's non-member pool: it is biased towards exactly the half the
++    # calibration is supposed to treat neutrally, and any attack classifier fitted on it transfers to
++    # the target with inverted sign. Measured on the epoch-49 pair: the target scores AUC 0.645
++    # against its own membership labels, but the shadow -- which never trained on those members --
++    # scores 0.617 against the same labels. Nearly all of the apparent leak is the two day sets being
++    # unequally easy to reconstruct, not memorisation.
++    #
++    # This model is neutral to both halves, so its loss on a node estimates that node's intrinsic
++    # difficulty. Subtracting it isolates what is specific to the target having trained on the node.
++    # It also gives the shadow-model attacks (He et al. 2021, Conti et al. 2022) a reference whose
++    # in/out split is not anti-correlated with the target's.
++    #
++    # Day choice: 04-06/12/13 carry APT ground truth and are excluded; 04-14 has no events at all.
++    # That leaves 04-05, 04-10 and 04-11, which are ~3M events each and so comparable in size to the
++    # days both roles train on.
++    "CADETS_E3_NOFRAC_CAL": {
++        "raw_dir": "",
++        "database": "cadets_e3",
++        "database_all_file": "cadets_e3",
++        "num_node_types": 3,
++        "num_edge_types": 10,
++        "start_date": "2018-04-02",
++        "end_date": "2018-04-14",
++        # days used by neither role
++        "train_dates": [
++            "2018-04-05",
++            "2018-04-10",
++            "2018-04-11",
++        ],
++        # every day the MIA is scored over, so this model reports a loss for all of them
++        "val_dates": [
++            "2018-04-02",
++            "2018-04-03",
++            "2018-04-04",
++            "2018-04-07",
++            "2018-04-08",
++            "2018-04-09",
++        ],
++        "test_dates": ["2018-04-06", "2018-04-12"],
++        "unused_dates": [],
++        "ground_truth_relative_path": [
++            "E3-CADETS/node_Nginx_Backdoor_06.csv",
++            "E3-CADETS/node_Nginx_Backdoor_12.csv",
++        ],
++        "attack_to_time_window": [
++            ["E3-CADETS/node_Nginx_Backdoor_06.csv", "2018-04-06 11:20:00", "2018-04-06 12:09:00"],
++            ["E3-CADETS/node_Nginx_Backdoor_12.csv", "2018-04-12 13:59:00", "2018-04-12 14:39:00"],
++        ],
++    },
++    # ---------------------------------------------------------------------------------------------
++    # V2: the SHADOW-MODEL design. Supersedes the CADETS_E3_NOFRAC_* trio above for MIA work.
++    #
++    # WHAT CHANGED AND WHY. In the NOFRAC trio the two roles are mirrors: the target's `val_dates`
++    # ARE the shadow's `train_dates`. Under `mia_split_mode: xrole` that makes the target's
++    # non-member pool identical to the shadow's member pool, which is elegant but means the shadow
++    # is not an independent model -- it is the target's negative class, trained. Here each role owns
++    # a private validation day instead (target 04-05, shadow 04-10), matching the day assignment of
++    # the committed CADETS_E3_TARGET / CADETS_E3_SHADOW pair.
++    #
++    # That makes this the textbook shadow-model threat model (He et al. 2021, Conti et al. 2022):
++    # the adversary trains their own model on their own days with known membership, fits an attack
++    # classifier on its outputs, and transfers it to the target. Target and shadow share no days.
++    #
++    # KNOWN LIMITATION, stated up front: membership is still perfectly collinear with the calendar
++    # (members 04-02/03/04 vs non-members 04-05). This design does not remove the day confound that
++    # the NOFRAC campaign identified -- only a within-day randomised split would. The neutral arm
++    # below is what keeps the confound measurable.
++    #
++    # COST OF THE PRIVATE VAL DAY. The non-member pool shrinks from three days to one, so the MIA
++    # scores far fewer negatives than the NOFRAC design did.
++    "CADETS_E3_V2_TARGET": {
++        "raw_dir": "",
++        "database": "cadets_e3",
++        "database_all_file": "cadets_e3",
++        "num_node_types": 3,
++        "num_edge_types": 10,
++        "start_date": "2018-04-02",
++        "end_date": "2018-04-14",
++        # members of the TARGET model
++        "train_dates": [
++            "2018-04-02",
++            "2018-04-03",
++            "2018-04-04",
++        ],
++        # non-members of the TARGET model, private to this role (the shadow never touches 04-05)
++        "val_dates": ["2018-04-05"],
++        "test_dates": ["2018-04-06", "2018-04-12"],
++        "unused_dates": [],
++        "ground_truth_relative_path": [
++            "E3-CADETS/node_Nginx_Backdoor_06.csv",
++            "E3-CADETS/node_Nginx_Backdoor_12.csv",
++        ],
++        "attack_to_time_window": [
++            ["E3-CADETS/node_Nginx_Backdoor_06.csv", "2018-04-06 11:20:00", "2018-04-06 12:09:00"],
++            ["E3-CADETS/node_Nginx_Backdoor_12.csv", "2018-04-12 13:59:00", "2018-04-12 14:39:00"],
++        ],
++    },
++    # The adversary's own model. Day-for-day disjoint from CADETS_E3_V2_TARGET, including the test
++    # day: 04-13 is the shadow role's attack day in the committed CADETS_E3_SHADOW too.
++    #
++    # The detection columns of the two roles are therefore NOT head-to-head -- 04-13 lists 24
++    # ground-truth malicious nodes against 51 across 04-06+04-12 (49 of which are realized in the
++    # graphs). Read them as two separate detection results, not as a comparison.
++    "CADETS_E3_V2_SHADOW": {
++        "raw_dir": "",
++        "database": "cadets_e3",
++        "database_all_file": "cadets_e3",
++        "num_node_types": 3,
++        "num_edge_types": 10,
++        "start_date": "2018-04-02",
++        "end_date": "2018-04-14",
++        # members of the SHADOW model
++        "train_dates": [
++            "2018-04-07",
++            "2018-04-08",
++            "2018-04-09",
++        ],
++        # non-members of the SHADOW model, private to this role
++        "val_dates": ["2018-04-10"],
++        "test_dates": ["2018-04-13"],
++        "unused_dates": [],
++        "ground_truth_relative_path": [
++            "E3-CADETS/node_Nginx_Backdoor_13.csv",
++        ],
++        "attack_to_time_window": [
++            ["E3-CADETS/node_Nginx_Backdoor_13.csv", "2018-04-13 09:03:00", "2018-04-13 09:16:00"],
++        ],
++    },
++    # The NEUTRAL reference: a model that trained on NEITHER role's members NOR either role's
++    # non-members, so its loss on a node estimates that node's intrinsic difficulty. Subtracting it
++    # is what separates memorisation from day-to-day drift, which is the whole methodological point
++    # of the campaign.
++    #
++    # WHY IT TRAINS ON A SINGLE DAY, unlike CADETS_E3_NOFRAC_CAL's three. The v2 split spends 04-05
++    # and 04-10 as the two roles' non-member pools, and CADETS_E3_NOFRAC_CAL trained on exactly
++    # those two days plus 04-11. A neutral model that trains on the non-members is worse than no
++    # neutral at all: it fits the negative class, which deflates its own member-vs-non-member AUC
++    # and therefore INFLATES `target - neutral` in the direction of an apparent leak. So they are
++    # excluded, and the day inventory leaves only 04-11 -- 04-06/11/12/13 carry APT ground truth
++    # (04-11 is kept because its ground truth is 4 lines and it is not used as anyone's test day),
++    # and 04-14 has no events at all.
++    #
++    # CAVEAT TO CARRY INTO ANY WRITE-UP: one training day is ~80k unique nodes against the target's
++    # ~178k, so this reference is a weaker model than the roles it calibrates. dAUC is a ranking
++    # difference, so a uniform loss offset does not bias it, but a weaker model is noisier.
++    "CADETS_E3_V2_CAL": {
++        "raw_dir": "",
++        "database": "cadets_e3",
++        "database_all_file": "cadets_e3",
++        "num_node_types": 3,
++        "num_edge_types": 10,
++        "start_date": "2018-04-02",
++        "end_date": "2018-04-14",
++        # the only benign day neither role uses as members or non-members
++        "train_dates": ["2018-04-11"],
++        # every day the MIA is scored over, so this model reports a loss for all of them
++        "val_dates": [
++            "2018-04-02",
++            "2018-04-03",
++            "2018-04-04",
++            "2018-04-05",
++            "2018-04-07",
++            "2018-04-08",
++            "2018-04-09",
++            "2018-04-10",
++        ],
++        "test_dates": ["2018-04-06", "2018-04-12"],
++        "unused_dates": [],
++        "ground_truth_relative_path": [
++            "E3-CADETS/node_Nginx_Backdoor_06.csv",
++            "E3-CADETS/node_Nginx_Backdoor_12.csv",
++        ],
++        "attack_to_time_window": [
++            ["E3-CADETS/node_Nginx_Backdoor_06.csv", "2018-04-06 11:20:00", "2018-04-06 12:09:00"],
++            ["E3-CADETS/node_Nginx_Backdoor_12.csv", "2018-04-12 13:59:00", "2018-04-12 14:39:00"],
++        ],
++    },
++    # ---------------------------------------------------------------------------------------------
++    # THEIA_E3 split into two roles with *disjoint training days*, so membership is well defined.
++    #
++    # The day inventory drives this split and is not obvious from the base THEIA_E3 entry above:
++    # event_table has NO rows for 2018-04-02, 04-06, 04-07 and 04-08. The base config lists them as
++    # train_dates, where they are harmless no-ops, but a role built on them would train on an empty
++    # graph. Only 8 days carry data:
++    #
++    #   04-03 8.19M | 04-04 7.98M | 04-05 2.43M | 04-09 0.71M
++    #   04-10 5.80M (attack) | 04-11 7.35M | 04-12 6.79M (attack) | 04-13 5.12M
++    #
++    # Two usable attack days, so each role gets one and the detection tables stay self-contained.
++    # That leaves 6 benign days for 2 roles x (train + val), i.e. 2 train days each - one fewer than
++    # CADETS, but on far larger days (target 16.2M / shadow 8.1M events, vs CADETS 5.8M / 11.2M).
++    # Days are assigned so that every training day falls strictly BEFORE that role's attack day.
++    # The one compromise: the shadow role's validation day (04-13) is after its attack day, because
++    # no earlier benign day is left. Validation only selects a threshold on benign data and takes no
++    # part in the membership definition, so this does not contaminate the MIA split.
++    "THEIA_E3_TARGET": {
++        "raw_dir": "",
++        "database": "theia_e3",
++        "database_all_file": "theia_e3",
++        "num_node_types": 3,
++        "num_edge_types": 10,
++        "start_date": "2018-04-02",
++        "end_date": "2018-04-14",
++        "train_dates": [
++            "2018-04-03",
++            "2018-04-04",
++        ],
++        "val_dates": ["2018-04-05"],
++        "test_dates": ["2018-04-10"],
++        "unused_dates": [],
++        "ground_truth_relative_path": [
++            "E3-THEIA/node_Firefox_Backdoor_Drakon_In_Memory.csv",
++        ],
++        "attack_to_time_window": [
++            [
++                "E3-THEIA/node_Firefox_Backdoor_Drakon_In_Memory.csv",
++                "2018-04-10 14:30:00",
++                "2018-04-10 15:00:00",
++            ],
++        ],
++    },
++    "THEIA_E3_SHADOW": {
++        "raw_dir": "",
++        "database": "theia_e3",
++        "database_all_file": "theia_e3",
++        "num_node_types": 3,
++        "num_edge_types": 10,
++        "start_date": "2018-04-02",
++        "end_date": "2018-04-14",
++        "train_dates": [
++            "2018-04-09",
++            "2018-04-11",
++        ],
++        "val_dates": ["2018-04-13"],
++        "test_dates": ["2018-04-12"],
++        "unused_dates": [],
++        "ground_truth_relative_path": [
++            "E3-THEIA/node_Browser_Extension_Drakon_Dropper.csv",
++        ],
++        "attack_to_time_window": [
++            [
++                "E3-THEIA/node_Browser_Extension_Drakon_Dropper.csv",
++                "2018-04-12 12:40:00",
++                "2018-04-12 13:30:00",
++            ],
++        ],
++    },
+     "CLEARSCOPE_E5": {
+         "raw_dir": "",
+         "database": "clearscope_e5",
+@@ -193,6 +634,200 @@ DATASET_DEFAULT_CONFIG = {
+             # ["E3-CLEARSCOPE/node_clearscope_e3_firefox_0412.csv", '2018-04-12 15:18:00', '2018-04-12 15:25:00'],
+         ],
+     },
++    # CLEARSCOPE_E3 split into two roles with *disjoint training days*, so membership is well
++    # defined. Two things make this split different from the CADETS and THEIA ones above.
++    #
++    # 1. Only ONE usable attack day exists (04-11; the 04-12 ground truth is commented out in the
++    #    base entry above because no malicious node survives into the database). Both roles
++    #    therefore share test_dates 04-11. That is sound: MIA membership is defined by train_dates
++    #    (mia_train_in / mia_heldout are drawn from them) and 04-11 is held out of BOTH roles'
++    #    training, so a shared attack day cannot contaminate the membership split. It also makes
++    #    the two roles' detection rows directly comparable.
++    #
++    # 2. The days are volume-balanced on purpose. The detection threshold is max_val_loss - the
++    #    MAXIMUM loss over the whole validation split (evaluation_utils.py:120) - which is an
++    #    extreme-value statistic and therefore grows with validation-set size. A lopsided split
++    #    gives the two roles thresholds that are not comparable, which shows up as spurious
++    #    asymmetry in the TP/FP/TN/FN columns. Day inventory (event_table rows):
++    #
++    #      04-02 0.04M | 04-03 1.19M | 04-04 1.46M | 04-05 0.94M | 04-06 1.19M
++    #      04-07 1.84M | 04-08 1.10M | 04-09 2.09M | 04-10 2.81M | 04-11 2.13M (attack)
++    #      04-12 2.00M | 04-13 1.39M
++    #
++    #    The assignment below balances train volume to 1.015x, val volume to 1.076x and total
++    #    role volume to 1.001x, and keeps each role's val day strictly INSIDE its own training
++    #    span so no role is thresholded on data from outside the period it was trained on.
++    #    04-02 is dropped (0.04M rows, two orders of magnitude thin); 04-12 and 04-13 are dropped
++    #    because they fall after the shared attack day.
++    "CLEARSCOPE_E3_TARGET": {
++        "raw_dir": "",
++        "database": "clearscope_e3",
++        "database_all_file": "clearscope_e3",
++        "num_node_types": 3,
++        "num_edge_types": 10,
++        "start_date": "2018-04-02",
++        "end_date": "2018-04-14",
++        # 1.46M + 0.94M + 2.81M = 5.21M
++        "train_dates": [
++            "2018-04-04",
++            "2018-04-05",
++            "2018-04-10",
++        ],
++        "val_dates": ["2018-04-08"],  # 1.10M, inside the 04-04..04-10 training span
++        "test_dates": ["2018-04-11"],
++        "unused_dates": ["2018-04-02", "2018-04-12", "2018-04-13"],
++        "ground_truth_relative_path": [
++            "E3-CLEARSCOPE/node_clearscope_e3_firefox_0411.csv",
++        ],
++        "attack_to_time_window": [
++            [
++                "E3-CLEARSCOPE/node_clearscope_e3_firefox_0411.csv",
++                "2018-04-11 13:54:00",
++                "2018-04-11 14:48:00",
++            ],
++        ],
++    },
++    "CLEARSCOPE_E3_SHADOW": {
++        "raw_dir": "",
++        "database": "clearscope_e3",
++        "database_all_file": "clearscope_e3",
++        "num_node_types": 3,
++        "num_edge_types": 10,
++        "start_date": "2018-04-02",
++        "end_date": "2018-04-14",
++        # 1.19M + 1.84M + 2.09M = 5.13M
++        "train_dates": [
++            "2018-04-03",
++            "2018-04-07",
++            "2018-04-09",
++        ],
++        "val_dates": ["2018-04-06"],  # 1.19M, inside the 04-03..04-09 training span
++        "test_dates": ["2018-04-11"],
++        "unused_dates": ["2018-04-02", "2018-04-12", "2018-04-13"],
++        "ground_truth_relative_path": [
++            "E3-CLEARSCOPE/node_clearscope_e3_firefox_0411.csv",
++        ],
++        "attack_to_time_window": [
++            [
++                "E3-CLEARSCOPE/node_clearscope_e3_firefox_0411.csv",
++                "2018-04-11 13:54:00",
++                "2018-04-11 14:48:00",
++            ],
++        ],
++    },
++    # ---------------------------------------------------------------------------------------------
++    # V2: the SHADOW-MODEL design for CLEARSCOPE_E3. Supersedes the CLEARSCOPE_E3_TARGET/SHADOW pair
++    # above for MIA work. Same threat model as CADETS_E3_V2_* and THEIA_E3_TARGET/SHADOW: each role
++    # trains on its own days, owns a private non-member pool, and shares no day with the other role.
++    #
++    # SHAPE IS 2 TRAIN + 2 VAL, not 3 + 1. Under `mia_split_mode: xrole` `val_dates` IS the
++    # non-member class, so the structure floor is set by the WITHIN-role distance between a role's
++    # train pool and its val pool. Searching all 560 (3+1) and 1260 (2+2) assignments of the eight
++    # usable benign days (see /data/clearscope_split_design/) gives:
++    #
++    #     shape                    best floor   best class ratio
++    #     3 train + 1 val              0.4254   1.84:1 / 2.16:1
++    #     2 train + 2 val              0.2834   1.42:1 / 1.03:1   <- this
++    #     committed CLEARSCOPE_E3_*    0.8313   2.42:1 / 2.19:1
++    #
++    # The 2+2 shape cuts the floor by a third against the best 3+1 and ~2.9x against the committed
++    # pair, and is the only shape that gets a role near 1:1 class balance. Measured pools:
++    # target 45,522 members vs 32,154 non-members (node-type L1 0.0271, 2,589 dropped for appearing
++    # in both); shadow 40,688 vs 39,657 (L1 0.0051, 3,218 dropped). It costs one training day, which
++    # THEIA_E3 already pays for the same reason, and CLEARSCOPE detection is weak regardless --
++    # only ~1.4% of either role's members reappear on the attack day.
++    #
++    # BOTH ROLES SHARE test_dates 04-11, and unlike CADETS/THEIA no private attack day is possible:
++    # node_clearscope_e3_firefox_0412.csv is an EMPTY file (see the base CLEARSCOPE_E3 entry), so
++    # 04-11 is the only day with attack labels. This does not touch the MIA -- `xrole` excludes test
++    # days from the non-member pool on purpose (training_loop.py:72: they carry the APT ground truth,
++    # so scoring them as non-members would measure the attack rather than membership). It is in fact
++    # an advantage for the detection table: both roles are scored on the identical 57,569-node
++    # evaluation set, which the CADETS v2 pair (04-06/12 vs 04-13) cannot offer. Test-day exposure is
++    # balanced between the roles: 977 member nodes (1.7%) for target, 635 (1.1%) for shadow.
++    #
++    # KNOWN LIMITATION, same as every other v2 pair: membership remains collinear with the calendar.
++    # Day-to-day Jaccard on CLEARSCOPE is 0.010-0.091 and 85-88% of each day's nodes occur on exactly
++    # one day, so the structure floor must be measured and subtracted before any AUC counts as
++    # memorisation. Only a within-day randomised node split removes the confound outright.
++    "CLEARSCOPE_E3_V2_TARGET": {
++        "raw_dir": "",
++        "database": "clearscope_e3",
++        "database_all_file": "clearscope_e3",
++        "num_node_types": 3,
++        "num_edge_types": 10,
++        "start_date": "2018-04-02",
++        "end_date": "2018-04-14",
++        # members: 1.10M + 2.09M events, 45,522 nodes after dropping the train/val intersection
++        "train_dates": [
++            "2018-04-08",
++            "2018-04-09",
++        ],
++        # non-members: 1.19M + 1.19M events, 32,154 nodes
++        "val_dates": [
++            "2018-04-03",
++            "2018-04-06",
++        ],
++        "test_dates": ["2018-04-11"],
++        "unused_dates": [
++            "2018-04-02",
++            "2018-04-04",
++            "2018-04-05",
++            "2018-04-07",
++            "2018-04-10",
++            "2018-04-12",
++            "2018-04-13",
++        ],
++        "ground_truth_relative_path": [
++            "E3-CLEARSCOPE/node_clearscope_e3_firefox_0411.csv",
++        ],
++        "attack_to_time_window": [
++            [
++                "E3-CLEARSCOPE/node_clearscope_e3_firefox_0411.csv",
++                "2018-04-11 13:54:00",
++                "2018-04-11 14:48:00",
++            ],
++        ],
++    },
++    "CLEARSCOPE_E3_V2_SHADOW": {
++        "raw_dir": "",
++        "database": "clearscope_e3",
++        "database_all_file": "clearscope_e3",
++        "num_node_types": 3,
++        "num_edge_types": 10,
++        "start_date": "2018-04-02",
++        "end_date": "2018-04-14",
++        # members: 0.94M + 2.81M events, 40,688 nodes after dropping the train/val intersection
++        "train_dates": [
++            "2018-04-05",
++            "2018-04-10",
++        ],
++        # non-members: 1.46M + 1.84M events, 39,657 nodes
++        "val_dates": [
++            "2018-04-04",
++            "2018-04-07",
++        ],
++        "test_dates": ["2018-04-11"],
++        "unused_dates": [
++            "2018-04-02",
++            "2018-04-03",
++            "2018-04-06",
++            "2018-04-08",
++            "2018-04-09",
++            "2018-04-12",
++            "2018-04-13",
++        ],
++        "ground_truth_relative_path": [
++            "E3-CLEARSCOPE/node_clearscope_e3_firefox_0411.csv",
++        ],
++        "attack_to_time_window": [
++            [
++                "E3-CLEARSCOPE/node_clearscope_e3_firefox_0411.csv",
++                "2018-04-11 13:54:00",
++                "2018-04-11 14:48:00",
++            ],
++        ],
++    },
+     "optc_h201": {
+         "raw_dir": "",
+         "database": "optc_201",
+@@ -970,6 +1605,12 @@ TASK_ARGS = {
+         "grad_accumulation": Arg(int, desc="Number of epochs to gather gradients before backprop."),
+         "inference_device": Arg(str, vals=OR(["cpu", "cuda"]), desc="Device used during testing."),
+         "used_method": Arg(str, vals=OR(["default"]), desc="Which training pipeline use."),
++        "save_final_model": Arg(bool, desc="Whether to checkpoint the final (best-epoch-restored) model to `training._trained_models_dir`. Only the final model is saved, not one per epoch."),
++        "mia_dump": Arg(bool, desc="Whether to dump per-node inference losses for MIA."),
++        "mia_rich_dump": Arg(bool, desc="Whether to also dump per-node encoder embeddings (and node types) next to the MIA loss CSVs, as .npz. Enables white-box representation-based attacks."),
++        "mia_split_mode": Arg(str, vals=OR(["random", "calendar", "xrole"]), desc="Strategy for splitting training graphs: 'random' (probabilistic, mia_split_frac), 'calendar' (all in-training, non-members = val + test days), 'xrole' (all in-training, non-members = val days only; pair with a dataset whose val_dates are another role's training days, e.g. CADETS_E3_NOFRAC)."),
++        "mia_split_frac": Arg(float, desc="Fraction of training graphs to use as in-training (for random mode)."),
++        "mia_split_seed": Arg(int, desc="Random seed for deterministic graph splitting."),
+         "encoder": {
+             "dropout": Arg(float),
+             "used_methods": Arg(
+diff --git a/pidsmaker/detection/training_methods/inference_loop.py b/pidsmaker/detection/training_methods/inference_loop.py
+index 0ddc602..14f108f 100644
+--- a/pidsmaker/detection/training_methods/inference_loop.py
++++ b/pidsmaker/detection/training_methods/inference_loop.py
+@@ -73,9 +73,88 @@ def test_edge_level(
+     csv_file = os.path.join(logs_dir, time_interval + ".csv")
+ 
+     edge_df.to_csv(csv_file, sep=",", header=True, index=False, encoding="utf-8")
++
++    # MIA splits only: optionally dump per-edge ENDPOINT EMBEDDINGS (h_src, h_dst) alongside the loss
++    # CSV, row-aligned with edge_df, for embedding-distance / He'21-style link-stealing attacks.
++    # Gated on mia_rich_dump so normal runs and val/test detection are untouched (a stray .npz in the
++    # val/test loss dirs would break globbing; the mia_ guard keeps it out of those).
++    if getattr(cfg.training, "mia_rich_dump", False) and split.startswith("mia_"):
++        h_src = results.get("h_src", None)
++        h_dst = results.get("h_dst", None)
++        if (isinstance(h_src, torch.Tensor) and isinstance(h_dst, torch.Tensor)
++                and h_src.dim() == 2 and h_src.shape[0] == len(edge_df) and h_dst.shape == h_src.shape):
++            arrays = dict(
++                h_src=h_src.detach().cpu().numpy().astype(np.float16),
++                h_dst=h_dst.detach().cpu().numpy().astype(np.float16),
++                srcnode=srcnodes.astype(np.int64), dstnode=dstnodes.astype(np.int64),
++                time=t_vars.astype(np.int64), edge_type=edge_types.astype(np.int64),
++                loss=losses.astype(np.float32),
++            )
++            # Native per-edge class posterior + logits from the detector's own edge-type head
++            # (Velox/Orthrus/Kairos all use predict_edge_type). fp32, not fp16: these are the
++            # attack's calibrated signal, and fp16 would round away the differences it keys on.
++            for key in ("posterior", "logits"):
++                v = results.get(key, None)
++                if isinstance(v, torch.Tensor) and v.dim() == 2 and v.shape[0] == len(edge_df):
++                    arrays[key] = v.detach().cpu().numpy().astype(np.float32)
++            np.savez_compressed(os.path.join(logs_dir, time_interval + ".npz"), **arrays)
++        else:
++            log(f"[MIA] edge embedding dump skipped for {os.path.basename(csv_file)}: "
++                f"h_src/h_dst not a (E,d) tensor aligned with {len(edge_df)} edges")
+     return all_losses
+ 
+ 
++def _dump_rich_nodes(results, data, n_id, loss, npz_file):
++    """Dump per-node encoder embeddings alongside the MIA loss CSV (white-box attack features).
++
++    The embedding is the detector's own representation: for MAGIC/NodLink a wide
++    reconstruction embedding, for FLASH/R-CAID the node-type logits themselves (their
++    decoder is identity, so h *is* the 3-dim logit vector and softmax(h) is the posterior).
++    Written as fp16 -- these are attack features, not the calibrated membership signal, and
++    fp32 would double an already large sweep. `loss` stays fp32.
++
++    Silently skips (rather than killing a multi-hour sweep) when the encoder output isn't a
++    per-node tensor aligned with n_id, e.g. tuple-valued h from src/dst-split encoders.
++    """
++    h = results.get("h", None)
++    if not isinstance(h, torch.Tensor) or h.dim() != 2 or h.shape[0] != len(n_id):
++        log(
++            f"[MIA] rich dump skipped for {os.path.basename(npz_file)}: "
++            f"embedding is {type(h).__name__} "
++            f"{tuple(h.shape) if isinstance(h, torch.Tensor) else ''}, expected ({len(n_id)}, d)"
++        )
++        return
++
++    arrays = {
++        "node": n_id.cpu().numpy().astype(np.int64),
++        "loss": loss.detach().cpu().numpy().astype(np.float32).ravel(),
++        "emb": h.detach().cpu().numpy().astype(np.float16),
++    }
++    node_type = getattr(data, "node_type", None)
++    if node_type is not None and node_type.shape[0] == len(n_id):
++        arrays["node_type"] = node_type.argmax(1).cpu().numpy().astype(np.int16)
++
++    # Native class posterior + logits from the detector's own node-type head, when it has one
++    # (FLASH/R-CAID/ThreaTrace). MAGIC/NodLink are pure reconstruction models and emit neither;
++    # they get a posterior from the frozen-encoder probe head instead. Posteriors stay fp32:
++    # unlike embeddings these ARE the attack's calibrated signal, and fp16 would round away the
++    # small probability differences the attacks key on.
++    for key in ("posterior", "logits"):
++        v = results.get(key, None)
++        if isinstance(v, torch.Tensor) and v.dim() == 2 and v.shape[0] == len(n_id):
++            arrays[key] = v.detach().cpu().numpy().astype(np.float32)
++
++    # The window's graph, as LOCAL indices into the arrays above (model.gather_h does
++    # h[edge_index[0]], so edge_index and h share one indexing). The loss CSVs carry no
++    # structure at all, so without this a neighbourhood-aggregation attack is impossible
++    # to run without re-deriving the graphs from the batching artifacts.
++    edge_index = getattr(data, "edge_index", None)
++    if edge_index is not None and edge_index.dim() == 2 and edge_index.shape[0] == 2:
++        arrays["edge_index"] = edge_index.cpu().numpy().astype(np.int32)
++
++    np.savez_compressed(npz_file, **arrays)
++
++
+ @torch.no_grad()
+ def test_node_level(
+     data,
+@@ -235,6 +314,15 @@ def test_node_level(
+                 }
+                 node_list.append(temp_dic)
+ 
++        else:
++            # Splits other than val/test (e.g. the MIA dump's mia_train_in / mia_heldout)
++            # have no kNN train-distance calibration, so magic_score can't be computed.
++            # Emit the raw per-node reconstruction loss, which is the membership signal the
++            # attack scores. Without this branch node_list stays empty and the dump is a
++            # bare newline (unreadable by the MIA scorer).
++            for i, node in enumerate(n_id):
++                node_list.append({"node": node.item(), "loss": float(loss[i].item())})
++
+     else:
+         for i, node in enumerate(n_id):
+             temp_dic = {
+@@ -251,6 +339,13 @@ def test_node_level(
+ 
+     df = pd.DataFrame(node_list)
+     df.to_csv(csv_file, sep=",", header=True, index=False, encoding="utf-8")
++
++    # MIA splits only: the val/test loss dirs are globbed file-by-file and parsed as CSV by
++    # evaluation_utils.calculate_threshold, so a stray .npz there breaks detection. Those
++    # splits don't need embeddings anyway -- only the MIA dump does.
++    if getattr(cfg.training, "mia_rich_dump", False) and split.startswith("mia_"):
++        _dump_rich_nodes(results, data, n_id, loss, os.path.join(logs_dir, time_interval + ".npz"))
++
+     return losses
+ 
+ 
+diff --git a/pidsmaker/detection/training_methods/mia_dump.py b/pidsmaker/detection/training_methods/mia_dump.py
+new file mode 100644
+index 0000000..053895b
+--- /dev/null
++++ b/pidsmaker/detection/training_methods/mia_dump.py
+@@ -0,0 +1,201 @@
++"""MIA support: split training window-graphs into in-training / held-out sets
++and dump per-node inference losses for both, for membership inference attacks."""
++
++import json
++import os
++
++import numpy as np
++
++from pidsmaker.utils.utils import get_device, log
++
++from . import inference_loop
++
++
++def split_train_graphs(train_data, mode: str, frac: float, seed: int):
++    """Partition training datasets into (in_datasets, out_datasets).
++
++    train_data is list[dataset]; dataset is an indexable sequence of graphs.
++    mode="random":   each graph -> in with probability `frac`, else out (seeded).
++    mode="calendar": all graphs in-training; out is empty (caller supplies val/test).
++    mode="xrole":    all graphs in-training; out is empty (caller supplies val only). `frac` is
++                     unused, so the model trains on 100% of its training days.
++    """
++    if mode in ("calendar", "xrole"):
++        return list(train_data), [[] for _ in train_data]
++    if mode != "random":
++        raise ValueError(f"Unknown mia_split_mode: {mode!r}")
++
++    rng = np.random.default_rng(seed)
++    in_datasets, out_datasets = [], []
++    for dataset in train_data:
++        mask = rng.random(len(dataset)) < frac
++        in_datasets.append([g for g, m in zip(dataset, mask) if m])
++        out_datasets.append([g for g, m in zip(dataset, mask) if not m])
++    return in_datasets, out_datasets
++
++
++def write_manifest(edge_losses_dir: str, epoch: int, meta: dict) -> str:
++    os.makedirs(edge_losses_dir, exist_ok=True)
++    manifest = {
++        "epoch": epoch,
++        "train_in_dir": os.path.join(edge_losses_dir, "mia_train_in"),
++        "heldout_dir": os.path.join(edge_losses_dir, "mia_heldout"),
++        **meta,
++    }
++    path = os.path.join(edge_losses_dir, "mia_manifest.json")
++    with open(path, "w") as fh:
++        json.dump(manifest, fh, indent=2)
++    # Per-epoch copy. `mia_manifest.json` is a fixed path, so a run that dumps at several
++    # epochs (training.mia_dump_epochs) overwrites it each time and only the last epoch stays
++    # discoverable -- even though every epoch's dump directory survives. Existing readers glob
++    # the exact name `mia_manifest.json` and are unaffected by this extra file.
++    with open(os.path.join(edge_losses_dir, f"mia_manifest_epoch_{epoch}.json"), "w") as fh:
++        json.dump(manifest, fh, indent=2)
++    return path
++
++
++def _dump_split(cfg, model, datasets, split_name, epoch, device):
++    model_epoch_file = f"model_epoch_{epoch}"
++    # Reset stateful encoder (TGN memory / last-neighbor) so the in-training and
++    # held-out splits are each scored from the SAME post-training state. Without
++    # this, held-out graphs would be scored with state warmed by all in-training
++    # graphs, asymmetrically shrinking the member/non-member gap. No-op for
++    # stateless encoders (e.g. NodLink).
++    if hasattr(model, "reset_state"):
++        model.reset_state()
++    # Dispatch to node- or edge-level inference exactly as inference_loop.main does,
++    # so edge-level detectors (e.g. Orthrus) dump edge losses instead of crashing.
++    test_fn = (
++        inference_loop.test_node_level
++        if cfg._is_node_level
++        else inference_loop.test_edge_level
++    )
++    for dataset in datasets:
++        for g in dataset:
++            g.to(device=device)
++            test_fn(
++                data=g, model=model, split=split_name,
++                model_epoch_file=model_epoch_file, cfg=cfg, device=device,
++            )
++            g.to("cpu")
++
++
++def dump_mia_inference(cfg, model, in_datasets, out_datasets, epoch, device) -> dict:
++    model.eval()
++    model.to_device(device)
++    log(f"[MIA] dumping in-training inference (epoch {epoch})...")
++    _dump_split(cfg, model, in_datasets, "mia_train_in", epoch, device)
++    log(f"[MIA] dumping held-out inference (epoch {epoch})...")
++    _dump_split(cfg, model, out_datasets, "mia_heldout", epoch, device)
++
++    # Every detector writes its manifest to <hash>/CADETS_E3/edge_losses/mia_manifest.json,
++    # so the detector name must be recorded here: without it the only way to tell whose
++    # manifest this is, is file mtime, which silently mixes detectors across sweeps.
++    meta = {
++        "detector": cfg._model,
++        "node_level": bool(cfg._is_node_level),
++        "mode": cfg.training.mia_split_mode,
++        # frac/seed only mean something in "random" mode. Recording the config default under
++        # "calendar"/"xrole" would claim the training set was subsampled when it was not -- those
++        # modes train on 100% of the training days and take their non-members from other days.
++        "frac": cfg.training.mia_split_frac if cfg.training.mia_split_mode == "random" else None,
++        "seed": cfg.training.mia_split_seed if cfg.training.mia_split_mode == "random" else None,
++        # Lets the attack side tell a rich (embedding) dump from a loss-only one without
++        # globbing for .npz files that may legitimately be absent.
++        "rich_dump": bool(getattr(cfg.training, "mia_rich_dump", False)),
++    }
++    # Opt-in control pass, gated on the environment rather than a config key: a new
++    # config Arg changes the config hash, which invalidates the cached preprocessing
++    # for every run that has already been done.
++    if os.environ.get("PIDS_MIA_SINGLEPASS") == "1":
++        log(f"[MIA] dumping single-pass control (epoch {epoch})...")
++        ordered = _original_order(
++            in_datasets, out_datasets, cfg.training.mia_split_mode,
++            cfg.training.mia_split_frac, cfg.training.mia_split_seed,
++        )
++        meta["singlepass_labels"] = _dump_singlepass(cfg, model, ordered, epoch, device)
++
++    manifest = write_manifest(cfg.training._edge_losses_dir, epoch, meta)
++    return json.load(open(manifest))
++
++
++def _original_order(in_datasets, out_datasets, mode, frac, seed):
++    """Rebuild the pre-split graph sequence, pairing each graph with its membership label.
++
++    split_train_graphs discards the original order, so the mask is regenerated from the
++    same seed and used to interleave the two lists back. Any disagreement means the
++    regenerated mask is not the one that produced the split, which would silently
++    mislabel every graph, so it raises instead.
++    """
++    if mode in ("calendar", "xrole"):
++        return [(g, 1) for ds in in_datasets for g in ds]
++    if mode != "random":
++        raise ValueError(f"Unknown mia_split_mode: {mode!r}")
++
++    rng = np.random.default_rng(seed)
++    ordered = []
++    for ins, outs in zip(in_datasets, out_datasets):
++        mask = rng.random(len(ins) + len(outs)) < frac
++        if int(mask.sum()) != len(ins):
++            raise RuntimeError(
++                f"regenerated mask disagrees with the split: {int(mask.sum())} in-graphs "
++                f"from the mask vs {len(ins)} in the split"
++            )
++        it_in, it_out = iter(ins), iter(outs)
++        ordered += [(next(it_in), 1) if m else (next(it_out), 0) for m in mask]
++    return ordered
++
++
++def _dump_singlepass(cfg, model, ordered, epoch, device) -> str:
++    """Label-independent control dump: ONE reset, every training graph scored in the
++    order it was in before the split.
++
++    _dump_split resets the encoder between the member and the non-member pass, so for a
++    stateful encoder (TGN memory) a graph is scored against state warmed only by graphs
++    sharing its label -- the feature is then a function of the label, and an attack on it
++    measures the dump procedure rather than the model. A single pass cannot do that.
++    """
++    model_epoch_file = f"model_epoch_{epoch}"
++    test_fn = (
++        inference_loop.test_node_level
++        if cfg._is_node_level
++        else inference_loop.test_edge_level
++    )
++    logs_dir = os.path.join(
++        cfg.training._edge_losses_dir, "mia_singlepass", model_epoch_file
++    )
++    os.makedirs(logs_dir, exist_ok=True)
++    # Leftovers from an earlier run share window names with this one, which would make
++    # every new-file diff below come back empty.
++    for stale in os.listdir(logs_dir):
++        os.remove(os.path.join(logs_dir, stale))
++
++    if hasattr(model, "reset_state"):
++        model.reset_state()
++
++    labels, seen = [], set()
++    for i, (g, member) in enumerate(ordered):
++        g.to(device=device)
++        test_fn(
++            data=g, model=model, split="mia_singlepass",
++            model_epoch_file=model_epoch_file, cfg=cfg, device=device,
++        )
++        g.to("cpu")
++        new = set(os.listdir(logs_dir)) - seen
++        # A window whose name repeats overwrites the earlier CSV and leaves the diff
++        # empty; joining on the name downstream would then attach one score to two
++        # labels, so refuse rather than emit an ambiguous manifest.
++        if len(new) != 1:
++            raise RuntimeError(
++                f"graph {i} produced {len(new)} new loss files (expected 1) -- "
++                "window names are not unique, cannot label this dump"
++            )
++        name = new.pop()
++        seen.add(name)
++        labels.append({"index": i, "file": name, "member": int(member)})
++
++    path = os.path.join(cfg.training._edge_losses_dir, "mia_singlepass_labels.json")
++    with open(path, "w") as fh:
++        json.dump({"epoch": epoch, "dir": logs_dir, "graphs": labels}, fh, indent=2)
++    log(f"[MIA] single-pass control: {len(labels)} graphs -> {path}")
++    return path
+diff --git a/pidsmaker/detection/training_methods/training_loop.py b/pidsmaker/detection/training_methods/training_loop.py
+index dceac5f..ff4f239 100644
+--- a/pidsmaker/detection/training_methods/training_loop.py
++++ b/pidsmaker/detection/training_methods/training_loop.py
+@@ -10,6 +10,7 @@ Handles model training with:
+ """
+ 
+ import copy
++import os
+ import tracemalloc
+ from time import perf_counter as timer
+ 
+@@ -23,6 +24,7 @@ from pidsmaker.factory import (
+     optimizer_few_shot_factory,
+ )
+ from pidsmaker.tasks.batching import get_preprocessed_graphs
++from pidsmaker.utils.data_utils import save_model
+ from pidsmaker.utils.utils import get_device, log, log_start, log_tqdm, set_seed
+ 
+ from . import inference_loop
+@@ -56,6 +58,26 @@ def main(cfg):
+ 
+     train_data, val_data, test_data, max_node_num = get_preprocessed_graphs(cfg)
+ 
++    mia_in_data, mia_out_data = train_data, None
++    if cfg.training.mia_dump:
++        from .mia_dump import split_train_graphs
++        mia_in_data, mia_out_data = split_train_graphs(
++            train_data,
++            mode=cfg.training.mia_split_mode,
++            frac=cfg.training.mia_split_frac,
++            seed=cfg.training.mia_split_seed,
++        )
++        if cfg.training.mia_split_mode == "calendar":
++            # held-out = val + test day graphs (days the model did not train on)
++            mia_out_data = list(val_data) + list(test_data)
++        elif cfg.training.mia_split_mode == "xrole":
++            # held-out = val days only. Test days are excluded on purpose: they carry the APT
++            # ground truth, so scoring them as non-members would mix attack traffic into the
++            # negative class and measure the attack rather than membership. Pair this with a
++            # dataset whose val_dates are another role's *training* days (CADETS_E3_NOFRAC).
++            mia_out_data = list(val_data)
++        train_data = mia_in_data  # train only on in-training graphs
++
+     model = build_model(
+         data_sample=train_data[0][0], device=device, cfg=cfg, max_node_num=max_node_num
+     )
+@@ -68,6 +90,20 @@ def main(cfg):
+     best_epoch_mode = run_evaluation == "best_epoch"
+ 
+     num_epochs = cfg.training.num_epochs
++    # Epochs at which to additionally checkpoint + dump mid-training, so one run can be attacked
++    # along its whole training trajectory instead of only at the end. 0-indexed, e.g.
++    # PIDS_MIA_DUMP_EPOCHS=49,99,149,199.
++    #
++    # Gated on the environment rather than a config Arg, for the same reason as
++    # PIDS_MIA_SINGLEPASS: every value under `training` is folded into the task hash, so merely
++    # declaring a new Arg shifts the hash of EVERY existing run (verified: the nodlink/CADETS
++    # target run moves 2442eea5 -> f42b9298) and orphans already-computed artifacts from any
++    # reader that resolves paths from config.
++    mia_dump_epoch_set = {
++        int(e)
++        for e in os.environ.get("PIDS_MIA_DUMP_EPOCHS", "").replace(" ", "").split(",")
++        if e
++    }
+     tot_loss = 0.0
+     epoch_times = []
+     peak_train_cpu_mem = 0
+@@ -218,8 +254,8 @@ def main(cfg):
+             model.load_state_dict(best_model)
+             model.to_device(device)
+ 
+-        # model_path = os.path.join(gnn_models_dir, f"model_epoch_{epoch}")
+-        # save_model(model, model_path, cfg)
++        # NOTE: no per-epoch checkpoint. Only the final (best-epoch-restored) model is saved, after
++        # the loop -- see `save_final_model` below. Per-epoch x 100 epochs x 48 runs would be TBs.
+ 
+         # Test
+         if (epoch + 1) % 2 == 0 or epoch == 0:
+@@ -244,6 +280,32 @@ def main(cfg):
+                 }
+             )
+ 
++        # Mid-training MIA sample. Runs last in the epoch body so the weights dumped are the ones
++        # this epoch finished with. Safe to interleave with training: the dump resets the encoder
++        # state, and every epoch already starts by resetting it (see `model.reset_state()` above),
++        # so the next epoch is unaffected.
++        # Checkpointing is independent of the dump: a run may want the weight trajectory without
++        # paying for the (far larger) MIA artifacts.
++        if cfg.training.save_final_model and epoch in mia_dump_epoch_set:
++            save_model(
++                model,
++                os.path.join(cfg.training._trained_models_dir, f"model_epoch_{epoch}"),
++                cfg,
++            )
++
++        if cfg.training.mia_dump and epoch in mia_dump_epoch_set:
++            from .mia_dump import dump_mia_inference
++
++            log(f"[MIA] mid-training dump at epoch {epoch}")
++            dump_mia_inference(
++                cfg=cfg,
++                model=model,
++                in_datasets=mia_in_data,
++                out_datasets=(mia_out_data or []),
++                epoch=epoch,
++                device=device,
++            )
++
+     # After training
+     if best_epoch_mode:
+         model.load_state_dict(best_model)
+@@ -256,6 +318,34 @@ def main(cfg):
+             split="test",
+         )
+ 
++    # Checkpoint the model that is actually used downstream: after the best-epoch restore and BEFORE
++    # the MIA dump, so the frozen weights provably match the dumped losses/posteriors.
++    if cfg.training.save_final_model:
++        model_path = os.path.join(
++            cfg.training._trained_models_dir,
++            f"model_epoch_{best_epoch if best_epoch_mode else num_epochs - 1}",
++        )
++        save_model(model, model_path, cfg)
++        log(f"Saved final model to {model_path}")
++
++    if cfg.training.mia_dump:
++        from .mia_dump import dump_mia_inference
++        dump_epoch = best_epoch if best_epoch_mode else (num_epochs - 1)
++        # In best_epoch mode the weights were just restored, so re-dumping is required even if
++        # that epoch was sampled mid-training. Otherwise the mid-training dump for this epoch is
++        # byte-identical and re-running it only wastes an inference pass over every graph.
++        if not best_epoch_mode and dump_epoch in mia_dump_epoch_set:
++            log(f"[MIA] final dump at epoch {dump_epoch} already written mid-training, skipping")
++        else:
++            dump_mia_inference(
++                cfg=cfg,
++                model=model,
++                in_datasets=mia_in_data,
++                out_datasets=(mia_out_data or []),
++                epoch=dump_epoch,
++                device=device,
++            )
++
+     wandb.log(
+         {
+             "best_epoch": best_epoch,
+diff --git a/pidsmaker/encoders/rcaid_encoder.py b/pidsmaker/encoders/rcaid_encoder.py
+index 755a542..a96703b 100644
+--- a/pidsmaker/encoders/rcaid_encoder.py
++++ b/pidsmaker/encoders/rcaid_encoder.py
+@@ -4,10 +4,73 @@ R-Caid-specific encoder combining multi-layer GAT with MLP-based aggregation
+ for root cause analysis and attack investigation in provenance graphs.
+ """
+ 
++import os
++
+ import torch
+ import torch.nn as nn
+ import torch.nn.functional as F
++from torch.utils.checkpoint import checkpoint
+ from torch_geometric.nn import GATConv
++from torch_geometric.utils import add_self_loops, remove_self_loops, softmax
++from torch_scatter import scatter
++
++
++def _grad_checkpoint_enabled() -> bool:
++    """Opt-in via environment for the same reason as PIDS_LOW_MEMORY: it changes the execution
++    strategy (recompute activations in backward instead of retaining them), never the math, so it
++    must stay out of the artifact hash chain."""
++    return os.environ.get("PIDS_GRAD_CHECKPOINT", "").strip().lower() not in ("", "0", "false")
++
++
++def _gat_one_head(conv: GATConv, head: int, x, edge_index, num_nodes: int):
++    """One attention head of `conv`, computed from slices of the conv's own parameters.
++
++    Multi-head GAT with concat=True is exactly H independent single-head GATs whose outputs are
++    concatenated: row block h of `lin.weight` and slice h of `att_src`/`att_dst` never interact
++    with any other head before the concat. Re-expressing one head functionally (mirroring
++    GATConv.forward of torch_geometric 2.5.3 for the dense, no-edge-attr case, with self-loops
++    already added by the caller) lets the checkpointed backward materialise one head's per-edge
++    tensors at a time -- (E, C) instead of (E, H, C). Gradients flow into the original parameters
++    through the slices. Equivalence is pinned by tests/test_rcaid_grad_checkpoint_equivalence.py.
++    """
++    H, C = conv.heads, conv.out_channels
++    W = conv.lin.weight[head * C:(head + 1) * C]
++    x_h = F.linear(x, W)                                       # (N, C); GATConv's lin has no bias
++    alpha_src = (x_h * conv.att_src[0, head]).sum(dim=-1)      # (N,)
++    alpha_dst = (x_h * conv.att_dst[0, head]).sum(dim=-1)
++
++    j, i = edge_index[0], edge_index[1]                        # source -> target
++    alpha = F.leaky_relu(alpha_src[j] + alpha_dst[i], conv.negative_slope)
++    alpha = softmax(alpha, i, num_nodes=num_nodes)
++    alpha = F.dropout(alpha, p=conv.dropout, training=conv.training)
++
++    msg = x_h[j] * alpha.unsqueeze(-1)                         # (E, C)
++    return scatter(msg, i, dim=0, dim_size=num_nodes, reduce="sum")
++
++
++def _gat_head_chunked(conv: GATConv, x, edge_index):
++    """`conv(x, edge_index)`, one head at a time; checkpointed only when a backward will happen.
++
++    Under `no_grad` there are no activations to trade for recompute, but the per-head split still
++    caps the peak transient at (E, C) instead of (E, H, C), which is the whole problem during
++    inference. Calling `_gat_one_head` directly there keeps `checkpoint`'s no-grad behaviour out
++    of the picture entirely.
++    """
++    num_nodes = x.size(0)
++    if conv.add_self_loops:
++        edge_index, _ = remove_self_loops(edge_index)
++        edge_index, _ = add_self_loops(edge_index, num_nodes=num_nodes)
++
++    outs = [
++        checkpoint(_gat_one_head, conv, h, x, edge_index, num_nodes, use_reentrant=False)
++        if torch.is_grad_enabled()
++        else _gat_one_head(conv, h, x, edge_index, num_nodes)
++        for h in range(conv.heads)
++    ]
++    out = torch.cat(outs, dim=-1) if conv.concat else torch.stack(outs, dim=1).mean(dim=1)
++    if conv.bias is not None:
++        out = out + conv.bias
++    return out
+ 
+ 
+ class _RcaidMLP(nn.Module):
+@@ -42,13 +105,30 @@ class RCaidGAT(nn.Module):
+         self.dropout1 = nn.Dropout(dropout)
+ 
+     def forward(self, x, edge_index, **kwargs):
+-        x1 = self.gat1(x, edge_index)
+-        x1 = F.relu(x1)
+-        # GAT Layer 2 with attention
+-        x2 = self.gat2(x1, edge_index)
+-        x2 = F.relu(x2)
+-        # Aggregation through attention in the third layer
+-        x3 = self.gat3(x2, edge_index)
++        # GAT attention retains per-edge, per-head activations for backward: with 4 heads x 128
++        # dims that is kilobytes of GPU per edge per layer, which the measured CADETS run confirms
++        # (19.16 GB peak at 1.6M edges). R-CAID's pseudo-graph windows reach 5-6M edges on
++        # CLEARSCOPE, past the 32 GB cards even with whole-layer checkpointing (measured 33.7 GB
++        # true peak). So the checkpoint unit is one attention HEAD, an exact decomposition of
++        # concat-mode GAT: per-edge transients shrink from (E, H, C) to (E, C), identical
++        # gradients (the GAT layers hold no dropout, so recomputation is deterministic), ~1/3
++        # extra forward compute.
++        # Gated on the flag alone, not on `self.training`: the MIA dump runs this encoder under
++        # no_grad on the same windows, where the eager branch builds one (E, H, C) message tensor
++        # whole -- 11.68 GiB at CLEARSCOPE's largest window (4.6M edges), which OOM'd a 32 GB card
++        # at epoch 0 even after training itself had been brought down to 11.33 GB.
++        if _grad_checkpoint_enabled():
++            x1 = F.relu(_gat_head_chunked(self.gat1, x, edge_index))
++            x2 = F.relu(_gat_head_chunked(self.gat2, x1, edge_index))
++            x3 = _gat_head_chunked(self.gat3, x2, edge_index)
++        else:
++            x1 = self.gat1(x, edge_index)
++            x1 = F.relu(x1)
++            # GAT Layer 2 with attention
++            x2 = self.gat2(x1, edge_index)
++            x2 = F.relu(x2)
++            # Aggregation through attention in the third layer
++            x3 = self.gat3(x2, edge_index)
+ 
+         x3 = self.dropout1(x3)
+         # Update through MLP (concatenate previous layer's output with the current output)
+diff --git a/pidsmaker/featurization/featurization_utils.py b/pidsmaker/featurization/featurization_utils.py
+index 18debdf..3b868f3 100644
+--- a/pidsmaker/featurization/featurization_utils.py
++++ b/pidsmaker/featurization/featurization_utils.py
+@@ -1,3 +1,4 @@
++import sys
+ from itertools import chain
+ 
+ import torch
+@@ -65,32 +66,45 @@ def get_corpus_using_neighbors_features(cfg, doc2vec_format=False):
+     splits = get_splits_to_train_featurization(cfg)
+     dates = list(chain.from_iterable([getattr(cfg.dataset, f"{split}_dates") for split in splits]))
+     sorted_paths = get_all_graphs_for_dates(cfg.transformation._graphs_dir, dates)
+-    graph_list = [torch.load(path) for path in sorted_paths]
+ 
+     words = []
+     nodes = set()
+-    for G in log_tqdm(graph_list, desc="Get corpus with neighbors"):
++    # One graph resident at a time. The rcaid pseudo-graph transformation is ~200x larger than
++    # every other detector's (49 GB over 241 snapshots on THEIA_E3 vs ~750 MB total), so
++    # materialising `[torch.load(p) for p in sorted_paths]` first put the whole thing in RAM at
++    # once and OOM-killed the process at 228 GB of 251 GB. Same iteration order, same output.
++    for path in log_tqdm(sorted_paths, desc="Get corpus with neighbors"):
++        G = torch.load(path)
++        # Tokenisation depends only on (label, type), but a node is re-tokenised once per edge
++        # that reaches it. Memoising per graph both saves the repeated work and lets every
++        # occurrence share one interned token list instead of allocating a fresh copy of the
++        # same strings for each neighbour.
++        token_cache = {}
++
++        def tokens_for(n):
++            cached = token_cache.get(n)
++            if cached is None:
++                cached = [sys.intern(t) for t in tokenize_label(G.nodes[n]["label"],
++                                                                G.nodes[n]["node_type"])]
++                token_cache[n] = cached
++            return cached
++
+         # Prepare the training data for Doc2Vec: each node and its neighbors as a 'document'
+         for node in G.nodes():
+             if node not in nodes:
+                 nodes.add(node)
+ 
+-                node_label = G.nodes[node]["label"]
+-                node_type = G.nodes[node]["node_type"]
+-
+-                neighbors = list(G.neighbors(node))
+                 neighbor_labels = []
++                for neighbor in G.neighbors(node):
++                    neighbor_labels.extend(tokens_for(neighbor))
+ 
+-                for neighbor in neighbors:
+-                    label = G.nodes[neighbor]["label"]
+-                    type_ = G.nodes[neighbor]["node_type"]
+-                    neighbor_labels.extend(tokenize_label(label, type_))
+-
+-                document = tokenize_label(node_label, node_type) + neighbor_labels
++                document = tokens_for(node) + neighbor_labels
+ 
+                 if doc2vec_format:
+                     words.append(TaggedDocument(words=document, tags=[node]))
+                 else:
+                     words.append(document)
+ 
++        del token_cache, G
++
+     return words
+diff --git a/pidsmaker/model.py b/pidsmaker/model.py
+index 6f0f20f..5f8d7f5 100644
+--- a/pidsmaker/model.py
++++ b/pidsmaker/model.py
+@@ -68,9 +68,11 @@ class Model(nn.Module):
+             res = self.encoder(
+                 edge_index=edge_index,
+                 t=batch.t,
+-                x_src=batch.x_src,
+-                x_dst=batch.x_dst,
+-                msg=batch.msg,
++                # getattr: the low-memory loading path strips msg/x_src/x_dst after reindexing
++                # (encoders that need them are rejected by _assert_low_memory_compatible).
++                x_src=getattr(batch, "x_src", None),
++                x_dst=getattr(batch, "x_dst", None),
++                msg=getattr(batch, "msg", None),
+                 edge_feats=getattr(batch, "edge_feats", None),
+                 inference=inference,
+                 edge_types=batch.edge_type,
+@@ -172,6 +174,16 @@ class Model(nn.Module):
+                 loss_or_scores = loss_or_scores + loss
+ 
+             results["loss"] = loss_or_scores
++            # Node embeddings, so callers can read the encoder's representation without a
++            # second encoder pass. `results` is the last objective's dict; no objective
++            # emits "h", so this cannot shadow one.
++            results["h"] = h
++            # Per-EDGE endpoint embeddings (E, d), in edge_index order -- the encoder's own
++            # src/dst representations (for TGN these are NOT h[edge_index]). Exposed so the edge
++            # MIA dump can write endpoint-embedding pairs for embedding-distance / link-stealing
++            # attacks without a second pass. No objective emits these keys.
++            results["h_src"] = h_src
++            results["h_dst"] = h_dst
+             return results
+ 
+     def get_val_ap(self):
+diff --git a/pidsmaker/objectives/predict_edge_type.py b/pidsmaker/objectives/predict_edge_type.py
+index 46e3f68..ed4f22b 100644
+--- a/pidsmaker/objectives/predict_edge_type.py
++++ b/pidsmaker/objectives/predict_edge_type.py
+@@ -1,4 +1,5 @@
+ import torch.nn as nn
++import torch.nn.functional as F
+ 
+ from pidsmaker.utils.utils import compute_class_weights
+ 
+@@ -22,4 +23,14 @@ class EdgeTypePrediction(nn.Module):
+ 
+         edge_type_classes = edge_type.argmax(dim=1)
+         loss = self.loss_fn(h, edge_type_classes, inference=inference, class_weights=class_weights)
+-        return {"loss": loss}
++
++        out = {"loss": loss}
++        if inference:
++            # `h` are this head's per-edge class logits over edge types (E, num_edge_types). The
++            # detector is already a supervised classifier here, so this is a native posterior --
++            # what posterior-based MIA (He'21 et al.) expects. Logits are kept alongside because
++            # softmax discards scale, which carries membership signal. Inference-only, so training
++            # is bit-for-bit unaffected.
++            out["logits"] = h.detach()
++            out["posterior"] = F.softmax(h, dim=1).detach()
++        return out
+diff --git a/pidsmaker/objectives/predict_node_type.py b/pidsmaker/objectives/predict_node_type.py
+index 8408641..817b094 100644
+--- a/pidsmaker/objectives/predict_node_type.py
++++ b/pidsmaker/objectives/predict_node_type.py
+@@ -23,4 +23,16 @@ class NodeTypePrediction(nn.Module):
+ 
+         node_type_classes = node_type.argmax(dim=1)
+         loss = self.loss_fn(h_hat, node_type_classes, inference=inference, weight=class_weights)
+-        return {"loss": loss, "out": F.log_softmax(h, dim=1)}
++
++        # NOTE: "out" softmaxes `h` (the encoder embedding), not `h_hat` (this head's class logits).
++        # That is only equivalent because every detector using this objective sets `decoder: none`,
++        # making h_hat is h. Left untouched -- it feeds detection scoring (inference_loop.py:168,198)
++        # and changing it would move detection numbers. The posterior below uses `h_hat`, which is
++        # correct for any decoder.
++        out = {"loss": loss, "out": F.log_softmax(h, dim=1)}
++        if inference:
++            # Native per-node posterior over node types (N, num_node_types): this detector's own
++            # trained classification head. Logits kept because softmax discards scale.
++            out["logits"] = h_hat.detach()
++            out["posterior"] = F.softmax(h_hat, dim=1).detach()
++        return out
+diff --git a/pidsmaker/objectives/reconstruct_masked_feat.py b/pidsmaker/objectives/reconstruct_masked_feat.py
+index cae060c..ad67eab 100644
+--- a/pidsmaker/objectives/reconstruct_masked_feat.py
++++ b/pidsmaker/objectives/reconstruct_masked_feat.py
+@@ -54,8 +54,17 @@ class GMAEFeatReconstruction(nn.Module):
+             x_rec = recon
+ 
+         if inference:
+-            losses = torch.zeros((x.shape[0],), device=x.device)
+-            return {"loss": losses}
++            # Per-node reconstruction error over ALL nodes. At inference no masking is
++            # applied (see Model._embed_nodes: masking is train-only), so mask_nodes is
++            # None and x_init/x_rec above are the full unmasked features and their
++            # reconstruction. sce_loss(..., inference=True) is NOT reduced, so this is a
++            # per-node (N,) score: a memorized/member node reconstructs with lower error.
++            #
++            # This is the MIA membership signal, the direct analog of NodLink's per-node
++            # reconstruction loss. It previously returned zeros because MAGIC's *detection*
++            # uses the kNN magic_score (computed downstream in test_node_level, not here),
++            # not this reconstruction error -- so nothing consumed it. The MIA dump does.
++            return {"loss": self.loss_fn(x_rec, x_init, inference=True)}
+ 
+         loss = self.loss_fn(x_rec, x_init, inference=inference)
+ 
+diff --git a/pidsmaker/preprocessing/transformation_methods/transformation_rcaid_pseudo_graph.py b/pidsmaker/preprocessing/transformation_methods/transformation_rcaid_pseudo_graph.py
+index 9fcd547..8275358 100644
+--- a/pidsmaker/preprocessing/transformation_methods/transformation_rcaid_pseudo_graph.py
++++ b/pidsmaker/preprocessing/transformation_methods/transformation_rcaid_pseudo_graph.py
+@@ -1,6 +1,5 @@
+ import networkx as nx
+-
+-from .transformation_utils import add_arbitrary_timestamps_to_graph
++import numpy as np
+ 
+ 
+ def identify_root_nodes(G):
+@@ -24,89 +23,53 @@ def identify_root_nodes(G):
+     return root_nodes
+ 
+ 
+-def create_pseudo_graph(G, root_nodes):
++def build_pseudo_graph(G, root_nodes, prune_threshold=None):
++    """Build the R-CAID pseudo-graph in a single pass.
++
++    The result is the same graph the previous four-stage pipeline produced
++    (create -> prune -> relabel -> convert): all original nodes with their attributes, and one
++    root->descendant edge per (root, descendant) pair, each carrying an arbitrary timestamp drawn
++    uniformly from the original graph's time range. Roots reaching more than
++    `prune_threshold * |V|` descendants contribute no edges (the old code removed their pseudo-node,
++    which deleted exactly those edges and nothing else, since original edges were never copied in).
++
++    It is built in one pass because the staged version held up to two full copies of the result
++    alive at once (`relabel_nodes` and the `nx.MultiDiGraph(...)` conversion each build a new graph
++    before the old one is released). On dense THEIA windows the pseudo-graph runs to 10^8 edges and
++    a single copy is tens of GB of NetworkX dicts, so the second transient copy was the difference
++    between finishing and rc=-9 -- THEIA_E3_SHADOW's transformation was OOM-killed twice running
++    alone with 239 GB free.
++
++    Timestamps are arbitrary by design (see `add_arbitrary_timestamps_to_graph`): new edges have no
++    real timestamp, so random ones in the original range are assigned and downstream models must not
++    rely on edge order. The draw here happens per root instead of in one vector over the final edge
++    list, so the *values* differ from the old implementation under the same seed -- the
++    distribution, dtype and range are identical, which is the only contract.
+     """
+-    Create a pseudo-graph G' based on the original graph G.
+-    Each pseudo-root retains the initial feature vector of the original root node,
+-    and outgoing edges are added from pseudo-roots to their descendants.
+-
+-    Args:
+-        G (nx.DiGraph): Original directed graph with nodes and features.
++    timestamps = [edge[2]["time"] for edge in G.edges(data=True)]
++    min_t, max_t = min(timestamps), max(timestamps)
+ 
+-    Returns:
+-        nx.DiGraph: Pseudo-graph with pseudo-root nodes and directed edges to descendants.
+-    """
+-    pseudo_graph = nx.DiGraph()
+-
+-    # Step 1: Add all original nodes and edges to the pseudo-graph
++    pseudo_graph = nx.MultiDiGraph()
+     for node, attr in G.nodes(data=True):
+         pseudo_graph.add_node(node, **attr)
+ 
+-    # Step 3: Create pseudo-root nodes and add edges to descendants
+-    for root in root_nodes:
+-        # Create pseudo-root node (retaining the same initial feature vector)
+-        pseudo_root = f"pseudo_{root}"
+-        pseudo_graph.add_node(pseudo_root, **G.nodes[root])  # Copy features from root node
++    max_allowed = (
++        prune_threshold * G.number_of_nodes() if prune_threshold is not None else float("inf")
++    )
+ 
+-        # Add edges from pseudo-root to all descendants of the original root
++    for root in root_nodes:
+         descendants = nx.descendants(G, root)
+-        for descendant in descendants:
+-            pseudo_graph.add_edge(pseudo_root, descendant)
++        if len(descendants) > max_allowed:
++            continue
++        rand_t = np.random.randint(min_t, max_t, size=len(descendants))
++        for t, descendant in zip(rand_t, descendants):
++            pseudo_graph.add_edge(root, descendant, time=t)
+ 
+     return pseudo_graph
+ 
+ 
+-def prune_pseudo_roots(pseudo_graph, G, prune_threshold):
+-    """
+-    Prune pseudo-root nodes from the pseudo-graph if they connect to more than
+-    a certain percentage of nodes in the original provenance graph.
+-
+-    Args:
+-        pseudo_graph (nx.DiGraph): The pseudo-graph with pseudo-root nodes.
+-        G (nx.DiGraph): The original provenance graph.
+-        prune_threshold (float): The threshold as a percentage (0-1) of total nodes in G.
+-                                 If a pseudo-root connects to more than this percentage of nodes,
+-                                 it will be pruned.
+-
+-    Returns:
+-        nx.DiGraph: The pruned pseudo-graph.
+-    """
+-    total_nodes_in_G = len(G.nodes())
+-    max_allowed_connections = prune_threshold * total_nodes_in_G
+-
+-    # Identify pseudo-roots that need to be pruned
+-    pseudo_roots_to_prune = []
+-    for node in pseudo_graph.nodes():
+-        if node.startswith("pseudo_"):
+-            # Count the number of nodes this pseudo-root connects to
+-            num_connections = len(list(pseudo_graph.successors(node)))
+-            if num_connections > max_allowed_connections:
+-                pseudo_roots_to_prune.append(node)
+-
+-    # Prune the identified pseudo-root nodes from the pseudo-graph
+-    for pseudo_root in pseudo_roots_to_prune:
+-        pseudo_graph.remove_node(pseudo_root)
+-
+-    return pseudo_graph
+-
+-
+-def remove_pseudo_prefix(graph):
+-    mapping = {node: node.replace("pseudo_", "") for node in graph.nodes()}
+-    graph = nx.relabel_nodes(graph, mapping)
+-
+-    return graph
+-
+-
+ def main(graph: nx.Graph, cfg) -> nx.Graph:
+     root_nodes = identify_root_nodes(graph)
+-    pseudo_graph = create_pseudo_graph(graph, root_nodes)
+-
+     use_pruning = cfg.transformation.rcaid_pseudo_graph.use_pruning
+-    if use_pruning:
+-        pseudo_graph = prune_pseudo_roots(pseudo_graph, graph, 0.5)
+-
+-    pseudo_graph = remove_pseudo_prefix(pseudo_graph)
+-    pseudo_graph = add_arbitrary_timestamps_to_graph(original_G=graph, new_G=pseudo_graph)
+-    pseudo_graph = nx.MultiDiGraph(pseudo_graph)
+-
+-    return pseudo_graph
++    prune_threshold = 0.5 if use_pruning else None
++    return build_pseudo_graph(graph, root_nodes, prune_threshold=prune_threshold)
+diff --git a/pidsmaker/tasks/feat_inference.py b/pidsmaker/tasks/feat_inference.py
+index 197d247..048e5cc 100644
+--- a/pidsmaker/tasks/feat_inference.py
++++ b/pidsmaker/tasks/feat_inference.py
+@@ -1,5 +1,6 @@
+ import os
+ 
++import numpy as np
+ import torch
+ 
+ from pidsmaker.config import update_cfg_for_multi_dataset
+@@ -23,61 +24,79 @@ from pidsmaker.utils.utils import (
+ 
+ 
+ def feat_inference(indexid2vec, etype2oh, ntype2oh, sorted_paths, out_dir, cfg):
++    # The message matrix is preallocated and filled row by row rather than built as a Python list
++    # of one small tensor per edge. On the large graphs (R-CAID on E3-THEIA) the list form was the
++    # OOM: a per-edge torch tensor costs several hundred bytes of object overhead on top of its
++    # payload, and `torch.vstack` then allocates the whole matrix a second time while the list is
++    # still alive. One preallocated array holds exactly the payload, once.
++    # `gen_relation_onehot` returns a BIDIRECTIONAL map: label -> one-hot and one-hot -> label. Only
++    # the forward direction is a lookup table, so the reverse entries are filtered out here.
++    def _forward_only(table):
++        return {k: v.numpy().astype(np.float32)
++                for k, v in table.items() if torch.is_tensor(v)}
++
++    etype_np = _forward_only(etype2oh)
++    ntype_np = _forward_only(ntype2oh)
++
++    e_dim = len(next(iter(etype_np.values())))
++    n_dim = len(next(iter(ntype_np.values())))
++    zero_etype = np.zeros(e_dim, dtype=np.float32)
++    emb_dim = len(next(iter(indexid2vec.values()))) if indexid2vec else 0
++    msg_dim = 2 * n_dim + e_dim + 2 * emb_dim
++
++    # Column layout, kept byte-identical to the previous concatenation order so existing artifacts
++    # and trained models stay comparable.
++    if indexid2vec is None:
++        off_ntype_u, off_etype = 0, n_dim
++        off_ntype_v = off_etype + e_dim
++        off_emb_u = off_emb_v = None
++    else:
++        off_ntype_u = 0
++        off_emb_u = n_dim
++        off_etype = off_emb_u + emb_dim
++        off_ntype_v = off_etype + e_dim
++        off_emb_v = off_ntype_v + n_dim
++
+     for path in log_tqdm(sorted_paths, desc="Computing edge embeddings"):
+         graph = torch.load(path)
+-        sorted_edges = graph.edges(data=True, keys=True)
++        n_edges = graph.number_of_edges()
+ 
+-        src, dst, msg, t, y = [], [], [], [], []
+-        for u, v, k, attr in sorted_edges:
+-            src.append(int(u))
+-            dst.append(int(v))
+-            t.append(int(attr["time"]))
+-            y.append(int(attr.get("y", 0)))
++        src = np.empty(n_edges, dtype=np.int64)
++        dst = np.empty(n_edges, dtype=np.int64)
++        t = np.empty(n_edges, dtype=np.int64)
++        y = np.empty(n_edges, dtype=np.int64)
++        msg = np.zeros((n_edges, msg_dim), dtype=np.float32)
++
++        for i, (u, v, k, attr) in enumerate(graph.edges(data=True, keys=True)):
++            src[i] = int(u)
++            dst[i] = int(v)
++            t[i] = int(attr["time"])
++            y[i] = int(attr.get("y", 0))
+ 
+             # If the graph structure has been changed in transformation, we may loose
+             # the edge label
+-            if "label" in attr:
+-                edge_label = etype2oh[attr["label"]]
+-            else:
+-                edge_label = torch.zeros_like(etype2oh[list(etype2oh.keys())[0]])
+-
+-            # Only types
+-            if indexid2vec is None:
+-                msg.append(
+-                    torch.cat(
+-                        [
+-                            ntype2oh[graph.nodes[u]["node_type"]],
+-                            edge_label,
+-                            ntype2oh[graph.nodes[v]["node_type"]],
+-                        ]
+-                    )
+-                )
+-
+-            # Types + node embeddings
+-            else:
+-                msg.append(
+-                    torch.cat(
+-                        [
+-                            ntype2oh[graph.nodes[u]["node_type"]],
+-                            torch.from_numpy(indexid2vec[u]),
+-                            edge_label,
+-                            ntype2oh[graph.nodes[v]["node_type"]],
+-                            torch.from_numpy(indexid2vec[v]),
+-                        ]
+-                    )
+-                )
++            edge_label = etype_np[attr["label"]] if "label" in attr else zero_etype
++
++            row = msg[i]
++            row[off_ntype_u:off_ntype_u + n_dim] = ntype_np[graph.nodes[u]["node_type"]]
++            row[off_etype:off_etype + e_dim] = edge_label
++            row[off_ntype_v:off_ntype_v + n_dim] = ntype_np[graph.nodes[v]["node_type"]]
++            if indexid2vec is not None:
++                row[off_emb_u:off_emb_u + emb_dim] = indexid2vec[u]
++                row[off_emb_v:off_emb_v + emb_dim] = indexid2vec[v]
+ 
+         data = CollatableTemporalData(
+-            src=torch.tensor(src).to(torch.long),
+-            dst=torch.tensor(dst).to(torch.long),
+-            t=torch.tensor(t).to(torch.long),
+-            msg=torch.vstack(msg).to(torch.float),
+-            y=torch.tensor(y).to(torch.long),
++            src=torch.from_numpy(src),
++            dst=torch.from_numpy(dst),
++            t=torch.from_numpy(t),
++            msg=torch.from_numpy(msg),
++            y=torch.from_numpy(y),
+         )
+ 
+         os.makedirs(out_dir, exist_ok=True)
+         file = path.split("/")[-1]
+         torch.save(data, os.path.join(out_dir, f"{file}.TemporalData.simple"))
++        del data, msg, src, dst, t, y, graph
+ 
+ 
+ def get_indexid2vec(cfg):
+diff --git a/pidsmaker/tests/test_mia_dump.py b/pidsmaker/tests/test_mia_dump.py
+new file mode 100644
+index 0000000..f4d9310
+--- /dev/null
++++ b/pidsmaker/tests/test_mia_dump.py
+@@ -0,0 +1,50 @@
++import json
++import os
++
++from pidsmaker.detection.training_methods.mia_dump import split_train_graphs, write_manifest
++
++
++def _fake_train_data(n=100):
++    # train_data is list[dataset]; dataset is list[graph]. Use ints as graph stand-ins.
++    return [list(range(n))]
++
++
++def test_random_split_is_deterministic_and_partitions():
++    data = _fake_train_data(200)
++    in1, out1 = split_train_graphs(data, mode="random", frac=0.5, seed=7)
++    in2, out2 = split_train_graphs(data, mode="random", frac=0.5, seed=7)
++    assert in1 == in2 and out1 == out2  # deterministic
++
++    in_flat = [g for ds in in1 for g in ds]
++    out_flat = [g for ds in out1 for g in ds]
++    assert set(in_flat).isdisjoint(out_flat)             # partition
++    assert sorted(in_flat + out_flat) == list(range(200))  # covers all
++    assert 60 < len(in_flat) < 140                        # ~50% with tolerance
++
++
++def test_random_split_seed_changes_partition():
++    data = _fake_train_data(200)
++    in1, _ = split_train_graphs(data, mode="random", frac=0.5, seed=1)
++    in2, _ = split_train_graphs(data, mode="random", frac=0.5, seed=2)
++    assert [g for ds in in1 for g in ds] != [g for ds in in2 for g in ds]
++
++
++def test_calendar_mode_keeps_all_in():
++    data = _fake_train_data(50)
++    in_ds, out_ds = split_train_graphs(data, mode="calendar", frac=0.5, seed=0)
++    assert [g for ds in in_ds for g in ds] == list(range(50))
++    assert [g for ds in out_ds for g in ds] == []
++
++
++def test_write_manifest(tmp_path):
++    path = write_manifest(
++        str(tmp_path), epoch=11,
++        meta={"detector": "nodlink", "mode": "random", "frac": 0.5, "seed": 3, "role": "shadow"},
++    )
++    assert os.path.exists(path)
++    data = json.load(open(path))
++    assert data["epoch"] == 11
++    assert data["train_in_dir"].endswith("mia_train_in")
++    assert data["heldout_dir"].endswith("mia_heldout")
++    assert data["detector"] == "nodlink"
++    assert data["role"] == "shadow"
+diff --git a/pidsmaker/tgn.py b/pidsmaker/tgn.py
+index 80bdf81..783f446 100644
+--- a/pidsmaker/tgn.py
++++ b/pidsmaker/tgn.py
+@@ -180,15 +180,9 @@ class TGNMemory(torch.nn.Module):
+ 
+     def train(self, mode: bool = True):
+         """Sets the module in training mode."""
+-        if self.training and not mode:
+-            # Flush message store to memory in case we just entered eval mode.
+-            # NOTE: this line below was originaly here. However, it is called when calling model.eval()
+-            # during inference and generates a memory overflow on large datasets like CADETS_E5.
+-            # As we load directly the memory from a pkl file, I don't think we need this line anymore so we
+-            # removed it. If results become strange in the future, try to add this line back to ensure it
+-            # doen't affect performance.
+-            self._update_memory(torch.arange(self.num_nodes, device=self.memory.device))
+-            self._reset_message_store()
++        # Do not flush the full message store when entering eval mode: updating memory
++        # for all nodes at once OOMs on large graphs (e.g. CADETS). Per-batch updates
++        # in update_state() handle eval/inference.
+         super().train(mode)
+ 
+ 
+@@ -279,15 +273,7 @@ class TimeEncodingMemory(torch.nn.Module):
+ 
+     def train(self, mode: bool = True):
+         """Sets the module in training mode."""
+-        if self.training and not mode:
+-            # Flush message store to memory in case we just entered eval mode.
+-            # NOTE: this line below was originaly here. However, it is called when calling model.eval()
+-            # during inference and generates a memory overflow on large datasets like CADETS_E5.
+-            # As we load directly the memory from a pkl file, I don't think we need this line anymore so we
+-            # removed it. If results become strange in the future, try to add this line back to ensure it
+-            # doen't affect performance.
+-            self._update_memory(torch.arange(self.num_nodes, device=self.device))
+-            self._reset_message_store()
++        # See TGNMemory.train(): skip full-graph flush on eval to avoid OOM.
+         super().train(mode)
+ 
+ 
+diff --git a/pidsmaker/utils/data_utils.py b/pidsmaker/utils/data_utils.py
+index 455c2f7..d51a634 100644
+--- a/pidsmaker/utils/data_utils.py
++++ b/pidsmaker/utils/data_utils.py
+@@ -108,7 +108,127 @@ class CollatableTemporalData(TemporalData):
+         return self.node_type_dst.max(dim=1).indices
+ 
+ 
++def low_memory_loading_enabled() -> bool:
++    """Opt-in flag for the low-memory loading path, read from the environment on purpose.
++
++    This is an execution strategy, not an experiment parameter -- it changes nothing about what is
++    computed -- so it must not enter the artifact hash chain. A config key would: every task hash is
++    the sha256 of its flattened config args, so adding a key would orphan every existing artifact.
++    """
++    return os.environ.get("PIDS_LOW_MEMORY", "").strip().lower() not in ("", "0", "false")
++
++
++def _assert_low_memory_compatible(cfg):
++    """The low-memory path only supports the plain pipeline shape (no TGN, no batching stages).
++
++    That is exactly the R-CAID configuration it exists for. Anything else keeps the eager path,
++    loudly: silently falling back would hide that the caller's OOM problem is not being solved.
++    """
++    encoder_methods = cfg.training.encoder.used_methods
++    problems = []
++    if "tgn" in encoder_methods:
++        problems.append("tgn encoders need msg and the full data for neighbor loading")
++    if cfg.batching.multi_dataset_training:
++        problems.append("multi-dataset training is not supported")
++    if cfg.batching.save_on_disk:
++        problems.append("save_on_disk already materialises everything")
++    if cfg.batching.global_batching.used_method != "none":
++        problems.append("global batching collates whole splits")
++    for m in map(str.strip, cfg.batching.intra_graph_batching.used_methods.split(",")):
++        if m != "none":
++            problems.append(f"intra-graph batching '{m}' is not supported")
++    if cfg.batching.inter_graph_batching.used_method != "none":
++        problems.append("inter-graph batching collates whole splits")
++    if "edges_distribution" in cfg.batching.node_features:
++        problems.append("edges_distribution features need a buffer sized over the whole split")
++    if "msg" in map(str.strip, cfg.batching.edge_features.split(",")):
++        problems.append("msg edge features keep the payload this path exists to drop")
++    if problems:
++        raise ValueError(
++            "PIDS_LOW_MEMORY is set but the config is incompatible with low-memory loading: "
++            + "; ".join(problems)
++        )
++
++
++def _load_all_datasets_low_memory(cfg, device, only_keep=None):
++    """Same contract as `load_all_datasets`, holding one window's payload at a time.
++
++    The eager pipeline keeps every window's `msg` (the raw per-edge payload) plus the `x_src`/
++    `x_dst` slices derived from it resident across all three splits -- about 1.9x the on-disk
++    payload. R-CAID's pseudo-graph inflates that payload to 538 GB on THEIA and ~110 GB per role
++    on CLEARSCOPE, so `training_loop`'s "Computing graphs" step was OOM-killed on both (251 GB
++    host). But after reindexing, nothing in a non-TGN run reads `msg`, `x_src` or `x_dst` again:
++    the encoder consumes the per-node `x` the reindexer builds, and the objectives consume `h`
++    and `node_type`. So each window is loaded, extracted, reindexed and stripped of those three
++    attributes before the next one is touched. Peak = slim windows + one window's payload.
++
++    Equivalence notes:
++    - extraction and reindexing run the exact same code as the eager path
++      (`_extract_msg_from_graph`, `GraphReindexer.reindex_graph`), per window;
++    - reindexing happens on CPU (the eager path uses `device`): scatter-mean is deterministic on
++      CPU and only nondeterministic-atomics different on CUDA;
++    - `max_node` is the max over original src/dst ids of all splits, as in the eager path. A
++      per-window reindexer is sized by its own window's max id, which yields identical outputs,
++      since `assoc` is only ever read at the window's own node ids.
++    """
++    _assert_low_memory_compatible(cfg)
++
++    ctx = _ExtractContext(cfg)
++    x_is_tuple = cfg.training.encoder.x_is_tuple
++    fix_buggy = cfg.batching.fix_buggy_graph_reindexer
++    base_path = cfg.feat_inference._edge_embeds_dir
++    cpu = torch.device("cpu")
++
++    max_node = 0
++    split_lists = {}
++    for split in ["train", "val", "test"]:
++        data_list = []
++        files = sorted(os.listdir(os.path.join(base_path, split)))
++        for f in log_tqdm(files, desc=f"Low-memory loading ({split})"):
++            g = torch.load(os.path.join(base_path, split, f)).to("cpu")
++            _extract_msg_from_graph(g, ctx)
++
++            window_max = int(torch.cat([g.src, g.dst]).max()) + 1
++            max_node = max(max_node, window_max)
++
++            reindexer = GraphReindexer(
++                device=cpu, num_nodes=window_max, fix_buggy_graph_reindexer=fix_buggy
++            )
++            reindexer.reindex_graph(g, use_tgn=False, x_is_tuple=x_is_tuple)
++
++            # The extraction stores node_type_src/dst and edge_type as *slices* of msg; cloning
++            # gives them their own storage, otherwise the del below would free nothing -- a view
++            # keeps the whole (E, msg_len) buffer alive.
++            g.node_type_src = g.node_type_src.clone()
++            g.node_type_dst = g.node_type_dst.clone()
++            g.edge_type = g.edge_type.clone()
++
++            # Dead weight from here on (non-TGN, no msg edge features): the payload and its
++            # per-edge slices. This is the entire memory win.
++            del g.msg
++            del g.x_src
++            del g.x_dst
++            data_list.append(g)
++        split_lists[split] = [data_list]
++
++    train_data, val_data, test_data = (
++        split_lists["train"], split_lists["val"], split_lists["test"]
++    )
++    if only_keep is not None:
++        train_data = train_data[:only_keep]
++        val_data = val_data[:only_keep]
++        test_data = test_data[:only_keep]
++
++    print(f"Max node in {cfg.dataset.name}: {max_node}")
++    log_dataset_stats((train_data, val_data, test_data))
++
++    return train_data, val_data, test_data, max_node
++
++
+ def load_all_datasets(cfg, device, only_keep=None):
++    if low_memory_loading_enabled():
++        return _load_all_datasets_low_memory(cfg, device, only_keep=only_keep)
++
+     multi_dataset = cfg.batching.multi_dataset_training
+     train_data = load_data_set(cfg, split="train", multi_dataset=multi_dataset)
+     val_data = load_data_set(cfg, split="val", multi_dataset=multi_dataset)
+@@ -175,6 +295,67 @@ def load_data_set(cfg, split: str, multi_dataset=False) -> list[CollatableTempor
+         return [load_data_list(path, split, cfg)]
+ 
+ 
++class _ExtractContext:
++    """Everything `_extract_msg_from_graph` needs that does not depend on the graph itself.
++
++    Split out of `extract_msg_from_data` so the low-memory loading path can run the exact same
++    per-graph extraction one window at a time instead of on a fully materialised list.
++    """
++
++    def __init__(self, cfg, data_set=None):
++        emb_dim = cfg.featurization.emb_dim
++        only_type = cfg.featurization.used_method.strip() == "only_type"
++        only_ones = cfg.featurization.used_method.strip() == "only_ones"
++        if only_type or only_ones or emb_dim is None:
++            emb_dim = 0
++        node_type_dim = cfg.dataset.num_node_types
++        edge_type_dim = cfg.dataset.num_edge_types
++        selected_node_feats = cfg.batching.node_features
++
++        self.expected_msg_len = (emb_dim * 2) + (node_type_dim * 2) + edge_type_dim
++        self.edge_type_dim = edge_type_dim
++
++        self.field_to_size = {
++            "src_type": node_type_dim,
++            "src_emb": emb_dim,
++            "edge_type": edge_type_dim,
++            "dst_type": node_type_dim,
++            "dst_emb": emb_dim,
++        }
++
++        self.x_distrib = None
++        if "edges_distribution" in selected_node_feats:
++            if data_set is None:
++                raise ValueError(
++                    "edges_distribution node features need the whole data set to size their "
++                    "buffer and are not supported by the low-memory loading path."
++                )
++            max_num_nodes = max([torch.cat([g.src, g.dst]).max().item() for g in data_set]) + 1
++            self.x_distrib = torch.zeros(max_num_nodes, edge_type_dim * 2, dtype=torch.float)
++
++        if only_type:
++            selected_node_feats = ["node_type"]
++        elif only_ones:
++            selected_node_feats = ["only_ones"]
++        else:
++            selected_node_feats = list(
++                map(lambda x: x.strip(), selected_node_feats.replace("-", ",").split(","))
++            )
++        self.selected_node_feats = selected_node_feats
++
++        self.edge_features = list(
++            map(lambda x: x.strip(), cfg.batching.edge_features.split(","))
++        )
++        self.possible_triplets = (
++            get_possible_triplets(cfg) if "edge_type_triplet" in self.edge_features else None
++        )
++        self.predict_edge_type = "predict_edge_type" in cfg.training.decoder.used_methods
++        self.num_edge_types = get_num_edge_type(cfg)
++        self.keep_msg_for_tgn = (
++            "tgn" in cfg.training.encoder.used_methods and cfg.training.encoder.tgn.use_memory
++        )
++
++
+ def extract_msg_from_data(
+     data_set: list[CollatableTemporalData], cfg
+ ) -> list[CollatableTemporalData]:
+@@ -182,125 +363,110 @@ def extract_msg_from_data(
+     Initializes the attributes of a `Data` object based on the `msg`
+     computed in previous tasks.
+     """
+-    emb_dim = cfg.featurization.emb_dim
+-    only_type = cfg.featurization.used_method.strip() == "only_type"
+-    only_ones = cfg.featurization.used_method.strip() == "only_ones"
+-    if only_type or only_ones or emb_dim is None:
+-        emb_dim = 0
+-    node_type_dim = cfg.dataset.num_node_types
+-    edge_type_dim = cfg.dataset.num_edge_types
+-    selected_node_feats = cfg.batching.node_features
+-
+-    msg_len = data_set[0].msg.shape[1]
+-    expected_msg_len = (emb_dim * 2) + (node_type_dim * 2) + edge_type_dim
+-    if msg_len != expected_msg_len:
+-        raise ValueError(
+-            f"The msg has an invalid shape, found {msg_len} instead of {expected_msg_len} (Is your num_edge_types correct?)"
+-        )
+-
+-    field_to_size = {
+-        "src_type": node_type_dim,
+-        "src_emb": emb_dim,
+-        "edge_type": edge_type_dim,
+-        "dst_type": node_type_dim,
+-        "dst_emb": emb_dim,
+-    }
++    ctx = _ExtractContext(cfg, data_set=data_set)
++    for g in data_set:
++        _extract_msg_from_graph(g, ctx)
++    return data_set
+ 
+-    if "edges_distribution" in selected_node_feats:
+-        max_num_nodes = max([torch.cat([g.src, g.dst]).max().item() for g in data_set]) + 1
+-        x_distrib = torch.zeros(max_num_nodes, edge_type_dim * 2, dtype=torch.float)
+ 
+-    if only_type:
+-        selected_node_feats = ["node_type"]
+-    elif only_ones:
+-        selected_node_feats = ["only_ones"]
+-    else:
+-        selected_node_feats = list(
+-            map(lambda x: x.strip(), selected_node_feats.replace("-", ",").split(","))
++def _extract_msg_from_graph(g: CollatableTemporalData, ctx: _ExtractContext):
++    """The per-graph body of `extract_msg_from_data`, unchanged in behaviour."""
++    msg_len = g.msg.shape[1]
++    if msg_len != ctx.expected_msg_len:
++        raise ValueError(
++            f"The msg has an invalid shape, found {msg_len} instead of {ctx.expected_msg_len} (Is your num_edge_types correct?)"
+         )
+ 
+-    edge_features = list(map(lambda x: x.strip(), cfg.batching.edge_features.split(",")))
+-    possible_triplets = get_possible_triplets(cfg) if "edge_type_triplet" in edge_features else None
++    selected_node_feats = ctx.selected_node_feats
++    edge_features = ctx.edge_features
++    possible_triplets = ctx.possible_triplets
++    x_distrib = ctx.x_distrib
++    edge_type_dim = ctx.edge_type_dim
++
++    fields = {}
++    idx = 0
++    for field, size in ctx.field_to_size.items():
++        fields[field] = g.msg[:, idx : idx + size]
++        idx += size
++
++    # Selects only the node features we want
++    x_src, x_dst = [], []
++    for feat in selected_node_feats:
++        if feat == "node_emb":
++            x_src.append(fields["src_emb"])
++            x_dst.append(fields["dst_emb"])
++
++        elif feat == "node_type":
++            x_src.append(fields["src_type"])
++            x_dst.append(fields["dst_type"])
++
++        elif feat == "edges_distribution":  # as in ThreaTrace
++            x_distrib.scatter_add_(
++                0, g.src.unsqueeze(1).expand(-1, edge_type_dim), fields["edge_type"]
++            )
++            x_distrib[:, edge_type_dim:].scatter_add_(
++                0, g.dst.unsqueeze(1).expand(-1, edge_type_dim), fields["edge_type"]
++            )
++
++            # In ThreaTrace they don't standardize, here we do standardize by max value in TW
++            x_distrib = x_distrib / (x_distrib.max() + 1e-12)
+ 
+-    for g in data_set:
+-        fields = {}
+-        idx = 0
+-        for field, size in field_to_size.items():
+-            fields[field] = g.msg[:, idx : idx + size]
+-            idx += size
+-
+-        # Selects only the node features we want
+-        x_src, x_dst = [], []
+-        for feat in selected_node_feats:
+-            if feat == "node_emb":
+-                x_src.append(fields["src_emb"])
+-                x_dst.append(fields["dst_emb"])
+-
+-            elif feat == "node_type":
+-                x_src.append(fields["src_type"])
+-                x_dst.append(fields["dst_type"])
+-
+-            elif feat == "edges_distribution":  # as in ThreaTrace
+-                x_distrib.scatter_add_(
+-                    0, g.src.unsqueeze(1).expand(-1, edge_type_dim), fields["edge_type"]
+-                )
+-                x_distrib[:, edge_type_dim:].scatter_add_(
+-                    0, g.dst.unsqueeze(1).expand(-1, edge_type_dim), fields["edge_type"]
+-                )
++            x_src.append(x_distrib[g.src])
++            x_dst.append(x_distrib[g.dst])
+ 
+-                # In ThreaTrace they don't standardize, here we do standardize by max value in TW
+-                x_distrib = x_distrib / (x_distrib.max() + 1e-12)
++            x_distrib.fill_(0)
++            # The standardisation above rebinds x_distrib to a fresh tensor; the original code
++            # carried that rebinding to the next graph through the enclosing scope, so the same
++            # hand-off must happen through the context here.
++            ctx.x_distrib = x_distrib
+ 
+-                x_src.append(x_distrib[g.src])
+-                x_dst.append(x_distrib[g.dst])
++        elif feat == "only_ones":
++            x_src.append(fields["src_type"].clone().fill_(1))
++            x_dst.append(fields["dst_type"].clone().fill_(1))
+ 
+-                x_distrib.fill_(0)
++        else:
++            raise ValueError(f"Node feature {feat} is invalid.")
+ 
+-            elif feat == "only_ones":
+-                x_src.append(fields["src_type"].clone().fill_(1))
+-                x_dst.append(fields["dst_type"].clone().fill_(1))
++    x_src = torch.cat(x_src, dim=-1)
++    x_dst = torch.cat(x_dst, dim=-1)
+ 
+-            else:
+-                raise ValueError(f"Node feature {feat} is invalid.")
++    # If we want to predict the edge type, we remove the edge type from the message
++    if ctx.predict_edge_type:
++        msg = torch.cat([x_src, x_dst], dim=-1)
++    else:
++        msg = torch.cat([x_src, x_dst, fields["edge_type"]], dim=-1)
+ 
+-        x_src = torch.cat(x_src, dim=-1)
+-        x_dst = torch.cat(x_dst, dim=-1)
++    edge_feats = build_edge_feats(
++        fields, msg, edge_features, possible_triplets, ctx.num_edge_types
++    )
+ 
+-        # If we want to predict the edge type, we remove the edge type from the message
+-        if "predict_edge_type" in cfg.training.decoder.used_methods:
+-            msg = torch.cat([x_src, x_dst], dim=-1)
+-        else:
+-            msg = torch.cat([x_src, x_dst, fields["edge_type"]], dim=-1)
+-
+-        num_edge_types = get_num_edge_type(cfg)
+-        edge_feats = build_edge_feats(fields, msg, edge_features, possible_triplets, num_edge_types)
+-
+-        edge_type = (
+-            get_triplet_edge_types(
+-                fields["src_type"],
+-                fields["dst_type"],
+-                fields["edge_type"],
+-                possible_triplets,
+-                num_edge_types,
+-            )
+-            if "edge_type_triplet" in edge_features
+-            else fields["edge_type"]
++    edge_type = (
++        get_triplet_edge_types(
++            fields["src_type"],
++            fields["dst_type"],
++            fields["edge_type"],
++            possible_triplets,
++            ctx.num_edge_types,
+         )
++        if "edge_type_triplet" in edge_features
++        else fields["edge_type"]
++    )
+ 
+-        g.x_src = x_src
+-        g.x_dst = x_dst
+-        g.edge_feats = edge_feats
+-        g.edge_type = edge_type
+-        g.node_type_src = fields["src_type"]
+-        g.node_type_dst = fields["dst_type"]
++    g.x_src = x_src
++    g.x_dst = x_dst
++    g.edge_feats = edge_feats
++    g.edge_type = edge_type
++    g.node_type_src = fields["src_type"]
++    g.node_type_dst = fields["dst_type"]
+ 
+-        if "tgn" in cfg.training.encoder.used_methods and cfg.training.encoder.tgn.use_memory:
+-            g.msg = msg
++    if ctx.keep_msg_for_tgn:
++        g.msg = msg
+ 
+-        # NOTE: do not add edge_index as it is already within `CollatableTemporalData`
+-        # g.edge_index = ...
++    # NOTE: do not add edge_index as it is already within `CollatableTemporalData`
++    # g.edge_index = ...
++
++    return g
+ 
+-    return data_set
+ 
+ def get_possible_triplets(cfg):
+     entity_map = get_node_map(from_zero=True)
+@@ -881,11 +1047,16 @@ def save_model(model, path: str, cfg):
+     )
+ 
+     if isinstance(model.encoder, TGNEncoder):
+-        torch.save(
+-            model.encoder.neighbor_loader,
+-            os.path.join(path, "neighbor_loader.pkl"),
+-            pickle_protocol=pickle.HIGHEST_PROTOCOL,
+-        )
++        # `neighbor_loader` only exists on older TGN encoders; in this version it is a local of
++        # the batching helper, not an encoder attribute, so reading it unguarded raised
++        # AttributeError and is why checkpointing was disabled. Save it only if actually present.
++        neighbor_loader = getattr(model.encoder, "neighbor_loader", None)
++        if neighbor_loader is not None:
++            torch.save(
++                neighbor_loader,
++                os.path.join(path, "neighbor_loader.pkl"),
++                pickle_protocol=pickle.HIGHEST_PROTOCOL,
++            )
+         if cfg.training.encoder.tgn.use_memory or "time_encoding" in cfg.batching.edge_features:
+             torch.save(
+                 model.encoder.memory,
+@@ -901,7 +1072,10 @@ def load_model(model, path: str, cfg, map_location=None):
+     model.load_state_dict(torch.load(os.path.join(path, "state_dict.pkl")))
+ 
+     if isinstance(model.encoder, TGNEncoder):
+-        model.encoder.neighbor_loader = torch.load(os.path.join(path, "neighbor_loader.pkl"))
++        # Mirror save_model: the file only exists for encoders that actually carry a neighbor_loader.
++        neighbor_loader_path = os.path.join(path, "neighbor_loader.pkl")
++        if os.path.exists(neighbor_loader_path):
++            model.encoder.neighbor_loader = torch.load(neighbor_loader_path)
+         if cfg.training.encoder.tgn.use_memory or "time_encoding" in cfg.batching.edge_features:
+             model.encoder.memory = torch.load(os.path.join(path, "memory.pkl"))
+ 
+diff --git a/tests/test_checkpoint_and_posterior.py b/tests/test_checkpoint_and_posterior.py
+new file mode 100644
+index 0000000..01a6201
+--- /dev/null
++++ b/tests/test_checkpoint_and_posterior.py
+@@ -0,0 +1,178 @@
++"""Phase 0/1 acceptance: model checkpoint round-trip, and native class posteriors.
++
++Checkpointing was disabled because `save_model` read `model.encoder.neighbor_loader`, which does
++not exist on this version's TGNEncoder (`neighbor_loader` is a local of the batching helper). These
++tests pin the guarded behaviour and the posterior contract the MIA attacks depend on.
++
++Run:  pytest tests/test_checkpoint_and_posterior.py -v
++"""
++
++import os
++
++import pytest
++import torch
++import torch.nn as nn
++
++from pidsmaker.utils.data_utils import load_model, save_model
++
++
++class _FakeTGN(nn.Module):
++    """Stands in for TGNEncoder: has `memory`, deliberately has NO `neighbor_loader`."""
++
++    def __init__(self):
++        super().__init__()
++        self.lin = nn.Linear(4, 3)
++        self.memory = nn.Parameter(torch.randn(5, 4), requires_grad=False)
++
++
++class _FakeModel(nn.Module):
++    def __init__(self, encoder):
++        super().__init__()
++        self.encoder = encoder
++        self.head = nn.Linear(3, 2)
++
++
++class _Ns:
++    """Attribute bag, so the fake cfg reads like the real dotted config."""
++
++    def __init__(self, **kw):
++        self.__dict__.update(kw)
++
++
++def _Cfg():
++    """Minimal duck-typed cfg exposing only what save_model/load_model read."""
++    return _Ns(
++        training=_Ns(encoder=_Ns(tgn=_Ns(use_memory=False))),
++        batching=_Ns(edge_features=["edge_type"]),
++    )
++
++
++def test_save_model_does_not_crash_without_neighbor_loader(tmp_path, monkeypatch):
++    """The regression that disabled checkpointing: encoder has no `neighbor_loader` attribute."""
++    import pidsmaker.utils.data_utils as du
++
++    monkeypatch.setattr(du, "TGNEncoder", _FakeTGN)  # make isinstance() take the TGN branch
++    model = _FakeModel(_FakeTGN())
++    assert not hasattr(model.encoder, "neighbor_loader")
++
++    save_model(model, str(tmp_path / "ckpt"), _Cfg())
++
++    assert os.path.exists(tmp_path / "ckpt" / "state_dict.pkl")
++    assert not os.path.exists(tmp_path / "ckpt" / "neighbor_loader.pkl"), (
++        "must not write a file for an attribute the encoder does not have"
++    )
++
++
++def test_save_load_round_trip_restores_every_tensor(tmp_path, monkeypatch):
++    import pidsmaker.utils.data_utils as du
++
++    monkeypatch.setattr(du, "TGNEncoder", _FakeTGN)
++    src = _FakeModel(_FakeTGN())
++    save_model(src, str(tmp_path / "ckpt"), _Cfg())
++
++    dst = _FakeModel(_FakeTGN())
++    # sanity: the fresh model really is different before loading
++    assert not torch.allclose(src.head.weight, dst.head.weight)
++
++    load_model(dst, str(tmp_path / "ckpt"), _Cfg())
++
++    for k, v in src.state_dict().items():
++        assert torch.equal(v, dst.state_dict()[k]), f"{k} not restored"
++
++
++def test_load_model_tolerates_absent_neighbor_loader_file(tmp_path, monkeypatch):
++    """load_model must mirror save_model: no file written => no file expected."""
++    import pidsmaker.utils.data_utils as du
++
++    monkeypatch.setattr(du, "TGNEncoder", _FakeTGN)
++    save_model(_FakeModel(_FakeTGN()), str(tmp_path / "ckpt"), _Cfg())
++    load_model(_FakeModel(_FakeTGN()), str(tmp_path / "ckpt"), _Cfg())  # must not raise
++
++
++# --------------------------------------------------------------------------------------------
++# Phase 1: native class posteriors
++# --------------------------------------------------------------------------------------------
++
++
++class _IdentityDecoder(nn.Module):
++    def forward(self, h=None, h_src=None, h_dst=None):
++        return h if h is not None else h_src + h_dst
++
++
++def _one_hot(idx, n):
++    return torch.nn.functional.one_hot(idx, n).float()
++
++
++def test_edge_type_posterior_shape_normalisation_and_argmax():
++    from pidsmaker.objectives.predict_edge_type import EdgeTypePrediction
++
++    E, C = 7, 10
++    obj = EdgeTypePrediction(
++        decoder=_IdentityDecoder(),
++        loss_fn=lambda h, y, inference, class_weights: torch.zeros(len(h)),
++        balanced_loss=False,
++        edge_type_dim=C,
++    )
++    h_src, h_dst = torch.randn(E, C), torch.randn(E, C)
++    edge_type = _one_hot(torch.randint(0, C, (E,)), C)
++
++    out = obj(h_src=h_src, h_dst=h_dst, edge_type=edge_type, inference=True)
++
++    assert out["posterior"].shape == (E, C)
++    assert torch.allclose(out["posterior"].sum(1), torch.ones(E), atol=1e-5)
++    assert torch.equal(out["posterior"].argmax(1), out["logits"].argmax(1))
++
++
++def test_edge_type_posterior_absent_during_training():
++    """Training must be untouched -- posteriors are an inference-only observable."""
++    from pidsmaker.objectives.predict_edge_type import EdgeTypePrediction
++
++    E, C = 7, 10
++    obj = EdgeTypePrediction(
++        decoder=_IdentityDecoder(),
++        loss_fn=lambda h, y, inference, class_weights: torch.zeros(1),
++        balanced_loss=False,
++        edge_type_dim=C,
++    )
++    out = obj(
++        h_src=torch.randn(E, C),
++        h_dst=torch.randn(E, C),
++        edge_type=_one_hot(torch.randint(0, C, (E,)), C),
++        inference=False,
++    )
++    assert "posterior" not in out and "logits" not in out
++
++
++def test_node_type_posterior_comes_from_decoder_logits_not_embedding():
++    """The posterior must be softmax(h_hat). A non-identity decoder makes h and h_hat differ, so
++    a posterior built from `h` (as the legacy "out" key is) would be wrong."""
++    from pidsmaker.objectives.predict_node_type import NodeTypePrediction
++
++    N, D, C = 6, 8, 3
++
++    class _Proj(nn.Module):
++        def __init__(self):
++            super().__init__()
++            self.lin = nn.Linear(D, C)
++
++        def forward(self, h):
++            return self.lin(h)
++
++    decoder = _Proj()
++    obj = NodeTypePrediction(
++        decoder=decoder,
++        loss_fn=lambda h, y, inference, weight: torch.zeros(len(h)),
++        balanced_loss=False,
++        node_type_dim=C,
++    )
++    h = torch.randn(N, D)
++    out = obj(h=h, node_type=_one_hot(torch.randint(0, C, (N,)), C), inference=True)
++
++    assert out["posterior"].shape == (N, C)
++    assert torch.allclose(out["posterior"].sum(1), torch.ones(N), atol=1e-5)
++    expected = torch.softmax(decoder(h), dim=1)
++    assert torch.allclose(out["posterior"], expected, atol=1e-6), "posterior must use h_hat"
++
++
++if __name__ == "__main__":
++    raise SystemExit(pytest.main([__file__, "-v"]))
+diff --git a/tests/test_feat_inference_equivalence.py b/tests/test_feat_inference_equivalence.py
+new file mode 100644
+index 0000000..31a8efd
+--- /dev/null
++++ b/tests/test_feat_inference_equivalence.py
+@@ -0,0 +1,115 @@
++"""The preallocated `feat_inference` must produce exactly what the list-of-tensors version did.
++
++That function was rewritten to stop R-CAID OOMing on E3-THEIA (side task S4). It feeds every
++downstream task, so "uses less memory" is worth nothing unless the bytes are identical: a silent
++change to the message-column layout would retrain every detector on differently-ordered features
++and invalidate the detection tables without failing anything visibly.
++
++The reference below is the original implementation, copied verbatim.
++"""
++
++import networkx as nx
++import numpy as np
++import pytest
++import torch
++
++from pidsmaker.tasks.feat_inference import feat_inference
++from pidsmaker.utils.utils import gen_relation_onehot
++
++
++def _reference(indexid2vec, etype2oh, ntype2oh, graph):
++    """The pre-S4 implementation, kept here as the oracle."""
++    src, dst, msg, t, y = [], [], [], [], []
++    for u, v, k, attr in graph.edges(data=True, keys=True):
++        src.append(int(u))
++        dst.append(int(v))
++        t.append(int(attr["time"]))
++        y.append(int(attr.get("y", 0)))
++
++        if "label" in attr:
++            edge_label = etype2oh[attr["label"]]
++        else:
++            edge_label = torch.zeros_like(etype2oh[list(etype2oh.keys())[0]])
++
++        if indexid2vec is None:
++            msg.append(torch.cat([
++                ntype2oh[graph.nodes[u]["node_type"]],
++                edge_label,
++                ntype2oh[graph.nodes[v]["node_type"]],
++            ]))
++        else:
++            msg.append(torch.cat([
++                ntype2oh[graph.nodes[u]["node_type"]],
++                torch.from_numpy(indexid2vec[u]),
++                edge_label,
++                ntype2oh[graph.nodes[v]["node_type"]],
++                torch.from_numpy(indexid2vec[v]),
++            ]))
++
++    return {
++        "src": torch.tensor(src).to(torch.long),
++        "dst": torch.tensor(dst).to(torch.long),
++        "t": torch.tensor(t).to(torch.long),
++        "msg": torch.vstack(msg).to(torch.float),
++        "y": torch.tensor(y).to(torch.long),
++    }
++
++
++def _build(n_nodes=12, n_edges=40, seed=0, with_labels=True):
++    rng = np.random.default_rng(seed)
++    rel2id = {"read": 1, "write": 2, "execute": 3, 1: "read", 2: "write", 3: "execute"}
++    ntype2id = {"file": 1, "process": 2, 1: "file", 2: "process"}
++    etype2oh = gen_relation_onehot(rel2id)
++    ntype2oh = gen_relation_onehot(ntype2id)
++
++    g = nx.MultiDiGraph()
++    for n in range(n_nodes):
++        g.add_node(n, node_type="file" if n % 2 else "process")
++    labels = ["read", "write", "execute"]
++    for i in range(n_edges):
++        u, v = int(rng.integers(n_nodes)), int(rng.integers(n_nodes))
++        attr = {"time": 1000 + i, "y": int(i % 7 == 0)}
++        if with_labels:
++            attr["label"] = labels[i % len(labels)]
++        g.add_edge(u, v, **attr)
++
++    indexid2vec = {n: rng.normal(size=8).astype(np.float32) for n in range(n_nodes)}
++    return g, etype2oh, ntype2oh, indexid2vec
++
++
++@pytest.mark.parametrize("use_embeddings", [True, False])
++@pytest.mark.parametrize("with_labels", [True, False])
++def test_matches_reference(tmp_path, use_embeddings, with_labels):
++    g, etype2oh, ntype2oh, indexid2vec = _build(with_labels=with_labels)
++    vecs = indexid2vec if use_embeddings else None
++
++    graph_path = tmp_path / "graph.pt"
++    torch.save(g, graph_path)
++    out_dir = tmp_path / "out"
++
++    feat_inference(vecs, etype2oh, ntype2oh, [str(graph_path)], str(out_dir), cfg=None)
++    got = torch.load(out_dir / "graph.pt.TemporalData.simple", weights_only=False)
++    want = _reference(vecs, etype2oh, ntype2oh, g)
++
++    for field in ("src", "dst", "t", "y"):
++        assert torch.equal(getattr(got, field), want[field]), field
++    assert got.msg.shape == want["msg"].shape
++    assert got.msg.dtype == want["msg"].dtype == torch.float32
++    assert torch.equal(got.msg, want["msg"]), "message matrix differs from the reference"
++
++
++def test_empty_graph_keeps_the_column_layout(tmp_path):
++    """A time window with no edges must still yield the right msg width, or concatenating it with
++    other windows downstream would fail on a shape mismatch."""
++    g, etype2oh, ntype2oh, indexid2vec = _build()
++    empty = nx.MultiDiGraph()
++    graph_path = tmp_path / "empty.pt"
++    torch.save(empty, graph_path)
++    out_dir = tmp_path / "out"
++
++    feat_inference(indexid2vec, etype2oh, ntype2oh, [str(graph_path)], str(out_dir), cfg=None)
++    got = torch.load(out_dir / "empty.pt.TemporalData.simple", weights_only=False)
++
++    n_dim = len(next(v for v in ntype2oh.values() if torch.is_tensor(v)))
++    e_dim = len(next(v for v in etype2oh.values() if torch.is_tensor(v)))
++    assert got.msg.shape == (0, 2 * n_dim + e_dim + 2 * 8)
+diff --git a/tests/test_low_memory_loading_equivalence.py b/tests/test_low_memory_loading_equivalence.py
+new file mode 100644
+index 0000000..b7b3ba8
+--- /dev/null
++++ b/tests/test_low_memory_loading_equivalence.py
+@@ -0,0 +1,210 @@
++"""The low-memory loading path (PIDS_LOW_MEMORY=1) must hand the training loop the same windows
++as the eager `load_all_datasets` pipeline, minus exactly the three attributes nothing reads after
++reindexing in a non-TGN run: `msg`, `x_src`, `x_dst`.
++
++Both paths run here on CPU against the same synthetic feat_inference artifact tree, and every
++surviving tensor of every window is compared exactly. CPU matters: eager reindexing normally runs
++on the training device, and CUDA scatter-mean is nondeterministic-atomics; on CPU both paths are
++deterministic, so equality is exact rather than approximate.
++"""
++
++import os
++import sys
++from types import SimpleNamespace as NS
++
++import pytest
++import torch
++
++sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
++
++from pidsmaker.factory import get_dimensions_from_data_sample
++from pidsmaker.utils.data_utils import (
++    CollatableTemporalData,
++    load_all_datasets,
++)
++
++EMB_DIM = 4
++N_TYPES = 3
++E_TYPES = 5
++MSG_LEN = 2 * EMB_DIM + 2 * N_TYPES + E_TYPES
++
++
++def make_cfg(edge_embeds_dir, encoder="rcaid_gat"):
++    return NS(
++        featurization=NS(emb_dim=EMB_DIM, used_method="doc2vec"),
++        dataset=NS(num_node_types=N_TYPES, num_edge_types=E_TYPES, name="CADETS_E3"),
++        batching=NS(
++            node_features="node_emb",
++            edge_features="none",
++            fix_buggy_graph_reindexer=False,
++            multi_dataset_training=False,
++            save_on_disk=False,
++            global_batching=NS(
++                used_method="none",
++                global_batching_batch_size=None,
++                global_batching_batch_size_inference=None,
++            ),
++            intra_graph_batching=NS(used_methods="none"),
++            inter_graph_batching=NS(used_method="none"),
++        ),
++        training=NS(
++            encoder=NS(used_methods=encoder, x_is_tuple=False),
++            decoder=NS(used_methods="predict_node_type"),
++        ),
++        feat_inference=NS(_edge_embeds_dir=str(edge_embeds_dir)),
++    )
++
++
++def make_window(seed, n_edges=40, id_pool=30):
++    g = torch.Generator().manual_seed(seed)
++    src = torch.randint(0, id_pool, (n_edges,), generator=g)
++    dst = torch.randint(0, id_pool, (n_edges,), generator=g)
++    t = torch.sort(torch.randint(1_000, 9_000, (n_edges,), generator=g)).values
++
++    def onehot(n_classes):
++        return torch.nn.functional.one_hot(
++            torch.randint(0, n_classes, (n_edges,), generator=g), n_classes
++        ).float()
++
++    msg = torch.cat(
++        [
++            onehot(N_TYPES),                                   # src_type
++            torch.randn(n_edges, EMB_DIM, generator=g),        # src_emb
++            onehot(E_TYPES),                                   # edge_type
++            onehot(N_TYPES),                                   # dst_type
++            torch.randn(n_edges, EMB_DIM, generator=g),        # dst_emb
++        ],
++        dim=1,
++    )
++    assert msg.shape[1] == MSG_LEN
++    return CollatableTemporalData(
++        src=src, dst=dst, t=t, msg=msg, y=torch.zeros(n_edges, dtype=torch.long)
++    )
++
++
++@pytest.fixture
++def artifact_tree(tmp_path):
++    base = tmp_path / "edge_embeds"
++    seed = 0
++    for split, n_windows in [("train", 3), ("val", 2), ("test", 2)]:
++        d = base / split
++        d.mkdir(parents=True)
++        for i in range(n_windows):
++            torch.save(make_window(seed), d / f"window_{i:02d}.TemporalData.simple")
++            seed += 1
++    return base
++
++
++def load_both(artifact_tree, monkeypatch):
++    """Load the same artifact tree through both paths.
++
++    The eager reference needs one adjustment to be comparable on CPU: with
++    `fix_buggy_graph_reindexer=False`, `node_features_reshape` returns `x` as a *view of the
++    reindexer's shared cache buffer*. On a CUDA run (every production run) the subsequent
++    `batch.to("cpu")` device transfer materialises that view into a private tensor, but on a
++    CPU-only run `.to("cpu")` is a no-op and later windows overwrite earlier windows' `x` in
++    place. Cloning after each window reproduces exactly what the device transfer does on CUDA.
++    The low-memory path needs no such fix: it builds a fresh reindexer per window.
++    """
++    from pidsmaker.utils.data_utils import GraphReindexer
++
++    cfg = make_cfg(artifact_tree)
++    monkeypatch.delenv("PIDS_LOW_MEMORY", raising=False)
++    original = GraphReindexer.reindex_graph
++
++    def reindex_then_copy(self, data, **kwargs):
++        data = original(self, data, **kwargs)
++        data.x = data.x.clone()
++        data.node_type = data.node_type.clone()
++        return data
++
++    with monkeypatch.context() as m:
++        m.setattr(GraphReindexer, "reindex_graph", reindex_then_copy)
++        eager = load_all_datasets(cfg, torch.device("cpu"))
++
++    monkeypatch.setenv("PIDS_LOW_MEMORY", "1")
++    slim = load_all_datasets(cfg, torch.device("cpu"))
++    return eager, slim
++
++
++KEPT_ATTRS = [
++    "x", "edge_index", "src", "dst", "t", "y", "edge_type",
++    "node_type", "node_type_src", "node_type_dst",
++    "original_edge_index", "original_n_id",
++]
++DROPPED_ATTRS = ["msg", "x_src", "x_dst"]
++
++
++def test_windows_match_eager_exactly(artifact_tree, monkeypatch):
++    (e_train, e_val, e_test, e_max), (s_train, s_val, s_test, s_max) = load_both(
++        artifact_tree, monkeypatch
++    )
++    assert e_max == s_max
++
++    for e_split, s_split in [(e_train, s_train), (e_val, s_val), (e_test, s_test)]:
++        assert len(e_split) == len(s_split) == 1
++        assert len(e_split[0]) == len(s_split[0])
++        for e_g, s_g in zip(e_split[0], s_split[0]):
++            for attr in KEPT_ATTRS:
++                assert torch.equal(getattr(e_g, attr), getattr(s_g, attr)), attr
++
++
++def test_only_the_payload_attributes_are_dropped(artifact_tree, monkeypatch):
++    (e_train, *_), (s_train, *_) = load_both(artifact_tree, monkeypatch)
++    e_g, s_g = e_train[0][0], s_train[0][0]
++    for attr in DROPPED_ATTRS:
++        assert hasattr(e_g, attr), f"eager path lost {attr}"
++        assert not hasattr(s_g, attr), f"low-memory path kept {attr}"
++
++
++def test_model_input_dimension_is_unchanged(artifact_tree, monkeypatch):
++    """build_model infers in_dim from x_src on eager windows and falls back to x on slim ones;
++    both must agree or the encoder would be built with the wrong input layer."""
++    (e_train, *_), (s_train, *_) = load_both(artifact_tree, monkeypatch)
++    *_, e_in = get_dimensions_from_data_sample(e_train[0][0])
++    *_, s_in = get_dimensions_from_data_sample(s_train[0][0])
++    assert e_in == s_in == EMB_DIM
++
++
++def test_encoder_forward_is_identical(artifact_tree, monkeypatch):
++    from pidsmaker.encoders.rcaid_encoder import RCaidGAT
++
++    (e_train, *_), (s_train, *_) = load_both(artifact_tree, monkeypatch)
++    e_g, s_g = e_train[0][0], s_train[0][0]
++
++    def run(g):
++        torch.manual_seed(0)
++        gat = RCaidGAT(in_dim=EMB_DIM, hid_dim=8, out_dim=N_TYPES, dropout=0.0)
++        gat.eval()
++        with torch.no_grad():
++            return gat(g.x, g.edge_index)["h"]
++
++    assert torch.equal(run(e_g), run(s_g))
++
++
++def test_dropping_msg_actually_frees_its_storage(artifact_tree, monkeypatch):
++    """node_type_src/dst and edge_type come out of extraction as slices of msg. If they stay
++    views, deleting msg frees nothing: each view pins the whole (E, msg_len) buffer, which is
++    the exact allocation this path exists to drop."""
++    _, (s_train, *_) = load_both(artifact_tree, monkeypatch)
++    for g in s_train[0]:
++        for attr in ["node_type_src", "node_type_dst", "edge_type"]:
++            t = getattr(g, attr)
++            storage_bytes = t.storage().size() * t.element_size()
++            assert storage_bytes == t.numel() * t.element_size(), (
++                f"{attr} still views a larger buffer"
++            )
++
++
++def test_incompatible_config_is_rejected_loudly(artifact_tree, monkeypatch):
++    monkeypatch.setenv("PIDS_LOW_MEMORY", "1")
++    cfg = make_cfg(artifact_tree, encoder="tgn")
++    with pytest.raises(ValueError, match="incompatible with low-memory loading"):
++        load_all_datasets(cfg, torch.device("cpu"))
++
++
++def test_flag_off_means_eager(artifact_tree, monkeypatch):
++    monkeypatch.setenv("PIDS_LOW_MEMORY", "0")
++    cfg = make_cfg(artifact_tree)
++    train_data, *_ = load_all_datasets(cfg, torch.device("cpu"))
++    assert hasattr(train_data[0][0], "msg")
+diff --git a/tests/test_rcaid_grad_checkpoint_equivalence.py b/tests/test_rcaid_grad_checkpoint_equivalence.py
+new file mode 100644
+index 0000000..4bc7a24
+--- /dev/null
++++ b/tests/test_rcaid_grad_checkpoint_equivalence.py
+@@ -0,0 +1,86 @@
++"""PIDS_GRAD_CHECKPOINT=1 must change memory behaviour only: same forward output, same loss,
++same gradients as the plain path. The GAT layers hold no dropout (RCaidGAT's only dropout sits
++outside the checkpointed blocks and draws from the global RNG in the same order either way), so
++on CPU the comparison is exact, not approximate.
++"""
++
++import contextlib
++import os
++import sys
++
++import pytest
++import torch
++
++sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
++
++from pidsmaker.encoders.rcaid_encoder import RCaidGAT
++
++
++def small_graph(seed=0, n_nodes=50, n_edges=200, in_dim=16):
++    g = torch.Generator().manual_seed(seed)
++    x = torch.randn(n_nodes, in_dim, generator=g)
++    edge_index = torch.randint(0, n_nodes, (2, n_edges), generator=g)
++    return x, edge_index
++
++
++def run_once(checkpointed, monkeypatch, dropout, train_mode, no_grad=False):
++    if checkpointed:
++        monkeypatch.setenv("PIDS_GRAD_CHECKPOINT", "1")
++    else:
++        monkeypatch.delenv("PIDS_GRAD_CHECKPOINT", raising=False)
++
++    torch.manual_seed(0)
++    model = RCaidGAT(in_dim=16, hid_dim=8, out_dim=3, dropout=dropout)
++    model.train(train_mode)
++
++    x, edge_index = small_graph()
++    torch.manual_seed(1)  # governs dropout1's mask, drawn in the same order on both paths
++    with torch.no_grad() if no_grad else contextlib.nullcontext():
++        out = model(x, edge_index)["h"]
++        loss = out.pow(2).sum()
++    if train_mode and not no_grad:
++        loss.backward()
++        grads = {n: p.grad.clone() for n, p in model.named_parameters()}
++    else:
++        grads = {}
++    return out.detach(), loss.detach(), grads
++
++
++@pytest.mark.parametrize("dropout", [0.0, 0.5])
++def test_training_forward_and_gradients_are_identical(monkeypatch, dropout):
++    out_a, loss_a, grads_a = run_once(False, monkeypatch, dropout, train_mode=True)
++    out_b, loss_b, grads_b = run_once(True, monkeypatch, dropout, train_mode=True)
++    # Forward is bitwise identical (verified down to torch.equal). Gradients are mathematically
++    # identical but accumulate per-head slices in a different order, so they match to float32
++    # summation-order ulps (~1e-8 measured) -- the same class of difference CUDA scatter atomics
++    # introduce on every production run.
++    assert torch.equal(out_a, out_b)
++    assert torch.equal(loss_a, loss_b)
++    assert grads_a.keys() == grads_b.keys()
++    for name in grads_a:
++        assert torch.allclose(grads_a[name], grads_b[name], rtol=1e-5, atol=1e-7), name
++
++
++@pytest.mark.parametrize("no_grad", [False, True])
++def test_inference_output_is_unchanged_by_the_flag(monkeypatch, no_grad):
++    """The flag must move memory, never inference output -- in eval, with or without no_grad.
++
++    The no_grad case is the one that matters in production: the MIA dump calls this encoder under
++    `@torch.no_grad()`, and it is the branch that takes `_gat_one_head` directly rather than
++    through `checkpoint`. Before the head-split was extended to cover it, that branch built one
++    (E, H, C) tensor whole and OOM'd a 32 GB card on CLEARSCOPE's 4.6M-edge windows.
++    """
++    out_a, *_ = run_once(False, monkeypatch, dropout=0.5, train_mode=False, no_grad=no_grad)
++    out_b, *_ = run_once(True, monkeypatch, dropout=0.5, train_mode=False, no_grad=no_grad)
++    assert torch.equal(out_a, out_b)
++
++
++def test_no_grad_inference_matches_grad_enabled_inference(monkeypatch):
++    """Head-splitting under no_grad must agree with the checkpointed grad-enabled eval path.
++
++    Pins the new branch against the one the equivalence argument was originally made for, so a
++    divergence between them cannot hide behind both being 'the checkpointed path'.
++    """
++    out_grad, *_ = run_once(True, monkeypatch, dropout=0.5, train_mode=False, no_grad=False)
++    out_nograd, *_ = run_once(True, monkeypatch, dropout=0.5, train_mode=False, no_grad=True)
++    assert torch.equal(out_grad, out_nograd)
+diff --git a/tests/test_rcaid_pseudo_graph_equivalence.py b/tests/test_rcaid_pseudo_graph_equivalence.py
+new file mode 100644
+index 0000000..97f76dc
+--- /dev/null
++++ b/tests/test_rcaid_pseudo_graph_equivalence.py
+@@ -0,0 +1,185 @@
++"""The rewritten single-pass R-CAID pseudo-graph builder must produce the same graph as the old
++four-stage pipeline (create -> prune -> relabel -> convert), which is kept verbatim below as the
++oracle.
++
++"Same graph" here means same node set with same attributes and same directed edge multiset. Edge
++timestamps are excluded from the comparison on purpose: they are *arbitrary by design* (new edges
++have no real timestamp, so `add_arbitrary_timestamps_to_graph` assigns uniform randoms over the
++original time range, and its own docstring forbids downstream order-dependence). The new builder
++draws them per root rather than in one vector over the relabelled edge list, so the values differ
++under the same seed; the test instead pins the contract -- every timestamp lies in the original
++graph's [min_t, max_t) range.
++"""
++
++import os
++import sys
++
++import networkx as nx
++import numpy as np
++import pytest
++
++sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
++
++from pidsmaker.preprocessing.transformation_methods.transformation_rcaid_pseudo_graph import (
++    build_pseudo_graph,
++    identify_root_nodes,
++    main as new_main,
++)
++from pidsmaker.preprocessing.transformation_methods.transformation_utils import (
++    add_arbitrary_timestamps_to_graph,
++)
++
++
++# --------------------------------------------------------------------------------------------
++# Oracle: the previous implementation, verbatim (create_pseudo_graph / prune_pseudo_roots /
++# remove_pseudo_prefix and the old main), as of commit 259adea.
++# --------------------------------------------------------------------------------------------
++def oracle_create_pseudo_graph(G, root_nodes):
++    pseudo_graph = nx.DiGraph()
++
++    for node, attr in G.nodes(data=True):
++        pseudo_graph.add_node(node, **attr)
++
++    for root in root_nodes:
++        pseudo_root = f"pseudo_{root}"
++        pseudo_graph.add_node(pseudo_root, **G.nodes[root])
++
++        descendants = nx.descendants(G, root)
++        for descendant in descendants:
++            pseudo_graph.add_edge(pseudo_root, descendant)
++
++    return pseudo_graph
++
++
++def oracle_prune_pseudo_roots(pseudo_graph, G, prune_threshold):
++    total_nodes_in_G = len(G.nodes())
++    max_allowed_connections = prune_threshold * total_nodes_in_G
++
++    pseudo_roots_to_prune = []
++    for node in pseudo_graph.nodes():
++        if node.startswith("pseudo_"):
++            num_connections = len(list(pseudo_graph.successors(node)))
++            if num_connections > max_allowed_connections:
++                pseudo_roots_to_prune.append(node)
++
++    for pseudo_root in pseudo_roots_to_prune:
++        pseudo_graph.remove_node(pseudo_root)
++
++    return pseudo_graph
++
++
++def oracle_remove_pseudo_prefix(graph):
++    mapping = {node: node.replace("pseudo_", "") for node in graph.nodes()}
++    graph = nx.relabel_nodes(graph, mapping)
++    return graph
++
++
++def oracle_main(graph, use_pruning):
++    root_nodes = identify_root_nodes(graph)
++    pseudo_graph = oracle_create_pseudo_graph(graph, root_nodes)
++    if use_pruning:
++        pseudo_graph = oracle_prune_pseudo_roots(pseudo_graph, graph, 0.5)
++    pseudo_graph = oracle_remove_pseudo_prefix(pseudo_graph)
++    pseudo_graph = add_arbitrary_timestamps_to_graph(original_G=graph, new_G=pseudo_graph)
++    pseudo_graph = nx.MultiDiGraph(pseudo_graph)
++    return pseudo_graph
++
++
++# --------------------------------------------------------------------------------------------
++# Graph generators. Node names are strings (as produced by construction), attributes carry the
++# label/node_type fields featurization reads, edges carry integer 'time'.
++# --------------------------------------------------------------------------------------------
++def random_provenance_graph(seed, n_nodes=40, n_edges=120):
++    rng = np.random.default_rng(seed)
++    G = nx.MultiDiGraph()
++    for i in range(n_nodes):
++        G.add_node(str(i), label=f"label_{i}", node_type=["subject", "file", "netflow"][i % 3])
++    for _ in range(n_edges):
++        u, v = rng.integers(0, n_nodes, size=2)
++        G.add_edge(str(u), str(v), time=int(rng.integers(1_000, 9_000)))
++    return G
++
++
++def star_burst_graph():
++    """One root reaching every node: pruned at threshold 0.5, kept without pruning."""
++    G = nx.MultiDiGraph()
++    for i in range(10):
++        G.add_node(str(i), label=f"l{i}", node_type="subject")
++    for i in range(1, 10):
++        G.add_edge("0", str(i), time=100 + i)
++    # A second, small root so the pruned graph still has edges.
++    G.add_edge("8", "9", time=50)
++    return G
++
++
++def canonical_edges(G):
++    return sorted((u, v) for u, v, _ in G.edges(keys=True))
++
++
++def assert_same_graph(new_G, old_G, original_G):
++    assert isinstance(new_G, nx.MultiDiGraph)
++    assert sorted(new_G.nodes()) == sorted(old_G.nodes())
++    for n in new_G.nodes():
++        assert new_G.nodes[n] == old_G.nodes[n], f"attrs differ on node {n}"
++    assert canonical_edges(new_G) == canonical_edges(old_G)
++
++    times = [d["time"] for _, _, d in original_G.edges(data=True)]
++    min_t, max_t = min(times), max(times)
++    for _, _, d in new_G.edges(data=True):
++        assert min_t <= d["time"] < max_t
++
++
++class _Cfg:
++    def __init__(self, use_pruning):
++        t = type("T", (), {})()
++        t.rcaid_pseudo_graph = type("T", (), {})()
++        t.rcaid_pseudo_graph.use_pruning = use_pruning
++        self.transformation = t
++
++
++@pytest.mark.parametrize("seed", [0, 1, 2, 3])
++@pytest.mark.parametrize("use_pruning", [True, False])
++def test_matches_oracle_on_random_graphs(seed, use_pruning):
++    G = random_provenance_graph(seed)
++    np.random.seed(seed)
++    old = oracle_main(G.copy(), use_pruning)
++    np.random.seed(seed)
++    new = new_main(G.copy(), _Cfg(use_pruning))
++    assert_same_graph(new, old, G)
++
++
++def test_pruning_drops_only_the_giant_root():
++    G = star_burst_graph()
++    np.random.seed(0)
++    old = oracle_main(G.copy(), use_pruning=True)
++    np.random.seed(0)
++    new = new_main(G.copy(), _Cfg(use_pruning=True))
++    assert_same_graph(new, old, G)
++    # Node "0" reaches 9/10 nodes > 0.5 threshold: its edges are gone, the node itself stays.
++    assert "0" in new.nodes()
++    assert new.out_degree("0") == 0
++    # The small root's edge survives.
++    assert ("8", "9") in {(u, v) for u, v, _ in new.edges(keys=True)}
++
++
++def test_without_pruning_keeps_the_giant_root():
++    G = star_burst_graph()
++    np.random.seed(0)
++    old = oracle_main(G.copy(), use_pruning=False)
++    np.random.seed(0)
++    new = new_main(G.copy(), _Cfg(use_pruning=False))
++    assert_same_graph(new, old, G)
++    assert new.out_degree("0") == 9
++
++
++def test_single_pass_builds_no_intermediate_copies():
++    """The point of the rewrite: main returns the one graph build_pseudo_graph constructed,
++    not a relabelled or converted copy of it."""
++    G = random_provenance_graph(seed=7)
++    roots = identify_root_nodes(G)
++    np.random.seed(7)
++    direct = build_pseudo_graph(G, roots, prune_threshold=0.5)
++    np.random.seed(7)
++    via_main = new_main(G, _Cfg(use_pruning=True))
++    assert canonical_edges(direct) == canonical_edges(via_main)
++    assert sorted(direct.nodes()) == sorted(via_main.nodes())

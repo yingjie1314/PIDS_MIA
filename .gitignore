@@ -1,0 +1,13 @@
+__pycache__/
+*.pyc
+*.log
+*.json
+*.pt
+*.pth
+*.pkl
+*.npz
+*.npy
+*.pdf
+*.png
+results/
+artifacts/

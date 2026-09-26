@@ -1,0 +1,110 @@
+import sys
+from itertools import chain
+
+import torch
+from gensim.models.doc2vec import TaggedDocument
+
+from pidsmaker.utils.utils import (
+    get_all_graphs_for_dates,
+    get_indexid2msg,
+    get_split2nodes,
+    log_tqdm,
+    tokenize_label,
+)
+
+
+def get_splits_to_train_featurization(cfg):
+    """
+    Returns the splits on which train the embedding method.
+    """
+    training_split = cfg.featurization.training_split.strip()
+    if training_split == "all":
+        return ["train", "val", "test"]
+
+    if training_split == "train":
+        return ["train"]
+
+    raise ValueError(f"Invalid training split {training_split}")
+
+
+def get_corpus(cfg, doc2vec_format=False, gather_multi_dataset=False):
+    """
+    Returns the tokenized labels of all nodes within a specific split.
+    For training, the train split can be used to get only the corpus of train set.
+    """
+    splits = get_splits_to_train_featurization(cfg)
+    split2nodes = get_split2nodes(cfg, gather_multi_dataset=gather_multi_dataset)
+    nodes_to_include = set().union(*(split2nodes[split] for split in splits))
+
+    words, tags = [], []
+    node_labels = set()
+    indexid2msg = get_indexid2msg(cfg, gather_multi_dataset=gather_multi_dataset)
+
+    for node, msg in indexid2msg.items():
+        node_type, node_label = msg
+
+        if (node in nodes_to_include) and (node_label not in node_labels):
+            node_labels.add(node_label)
+            tags.append(node)
+
+            words.append(tokenize_label(node_label, node_type))
+
+    if doc2vec_format:
+        words = [
+            TaggedDocument(words=word_list, tags=[str(tag)]) for word_list, tag in zip(words, tags)
+        ]
+
+    return words
+
+
+# Used in Rcaid
+def get_corpus_using_neighbors_features(cfg, doc2vec_format=False):
+    """
+    Same but also adds the tokens of neighbors in the final tokens.
+    We need to loop on the graphs here to find neighbors.
+    """
+    splits = get_splits_to_train_featurization(cfg)
+    dates = list(chain.from_iterable([getattr(cfg.dataset, f"{split}_dates") for split in splits]))
+    sorted_paths = get_all_graphs_for_dates(cfg.transformation._graphs_dir, dates)
+
+    words = []
+    nodes = set()
+    # One graph resident at a time. The rcaid pseudo-graph transformation is ~200x larger than
+    # every other detector's (49 GB over 241 snapshots on THEIA_E3 vs ~750 MB total), so
+    # materialising `[torch.load(p) for p in sorted_paths]` first put the whole thing in RAM at
+    # once and OOM-killed the process at 228 GB of 251 GB. Same iteration order, same output.
+    for path in log_tqdm(sorted_paths, desc="Get corpus with neighbors"):
+        G = torch.load(path)
+        # Tokenisation depends only on (label, type), but a node is re-tokenised once per edge
+        # that reaches it. Memoising per graph both saves the repeated work and lets every
+        # occurrence share one interned token list instead of allocating a fresh copy of the
+        # same strings for each neighbour.
+        token_cache = {}
+
+        def tokens_for(n):
+            cached = token_cache.get(n)
+            if cached is None:
+                cached = [sys.intern(t) for t in tokenize_label(G.nodes[n]["label"],
+                                                                G.nodes[n]["node_type"])]
+                token_cache[n] = cached
+            return cached
+
+        # Prepare the training data for Doc2Vec: each node and its neighbors as a 'document'
+        for node in G.nodes():
+            if node not in nodes:
+                nodes.add(node)
+
+                neighbor_labels = []
+                for neighbor in G.neighbors(node):
+                    neighbor_labels.extend(tokens_for(neighbor))
+
+                document = tokens_for(node) + neighbor_labels
+
+                if doc2vec_format:
+                    words.append(TaggedDocument(words=document, tags=[node]))
+                else:
+                    words.append(document)
+
+        del token_cache, G
+
+    return words
